@@ -8,9 +8,10 @@ export function makeListCommand(): Command {
   cmd
     .description('List all captures')
     .option('-d, --device <device>', 'Filter by device type: pc, mobile')
+    .option('-u, --url <text>', 'Filter by URL (partial match)')
     .option('--json', 'Output as JSON')
     .option('--storage-dir <dir>', 'Storage directory override')
-    .action(async (opts: { device?: string; json?: boolean; storageDir?: string }) => {
+    .action(async (opts: { device?: string; url?: string; json?: boolean; storageDir?: string }) => {
       const storage = createStorage(opts.storageDir);
       await storage.init();
 
@@ -22,6 +23,11 @@ export function makeListCommand(): Command {
           process.exit(2);
         }
         captures = captures.filter((c) => c.device_type === (opts.device as DeviceType));
+      }
+
+      if (opts.url) {
+        const needle = opts.url.toLowerCase();
+        captures = captures.filter((c) => c.url.toLowerCase().includes(needle));
       }
 
       if (opts.json) {

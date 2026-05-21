@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import fs from 'node:fs/promises';
 import { createStorage } from '../../storage/index.js';
 import { printError, printSuccess } from '../output.js';
 
@@ -16,6 +17,8 @@ function openFile(filePath: string): Promise<void> {
     child.on('error', reject);
     // Resolve immediately — viewer launches in background
     child.on('spawn', resolve);
+    // Fallback for older Node versions where 'spawn' event may not fire
+    setTimeout(resolve, 200);
   });
 }
 
@@ -48,6 +51,13 @@ export function makeViewCommand(): Command {
         const absPath = path.isAbsolute(capture.image_path)
           ? capture.image_path
           : path.join(storageDir, capture.image_path);
+
+        try {
+          await fs.access(absPath);
+        } catch {
+          printError(`Image file not found: ${absPath}`);
+          process.exit(1);
+        }
 
         try {
           await openFile(absPath);
