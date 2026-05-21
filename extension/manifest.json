@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "wsc - Web Screen Capture",
+  "version": "1.0.0",
+  "description": "現在閲覧中のページをPC・モバイル両方でフルページキャプチャし、wscのローカルストレージに保存します",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "debugger"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "wsc - Web Screen Capture"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

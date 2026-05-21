@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>wsc</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #1e1e2e;
+      color: #cdd6f4;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #181825;
+      border-bottom: 1px solid #313244;
+    }
+
+    header h1 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #89dceb;
+      letter-spacing: 0.05em;
+    }
+
+    #server-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #313244;
+      color: #a6adc8;
+    }
+    #server-badge.online  { background: #a6e3a1; color: #1e1e2e; }
+    #server-badge.offline { background: #f38ba8; color: #1e1e2e; }
+
+    main { padding: 12px 14px; }
+
+    #url-box {
+      background: #181825;
+      border: 1px solid #313244;
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      color: #a6adc8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 10px;
+    }
+
+    #label {
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid #313244;
+      background: #181825;
+      color: #cdd6f4;
+      font-size: 13px;
+      outline: none;
+      margin-bottom: 10px;
+    }
+    #label:focus { border-color: #89dceb; }
+    #label::placeholder { color: #585b70; }
+
+    #capture-btn {
+      width: 100%;
+      padding: 9px;
+      border-radius: 6px;
+      border: none;
+      background: #89dceb;
+      color: #1e1e2e;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    #capture-btn:hover:not(:disabled) { opacity: 0.85; }
+    #capture-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    #status {
+      margin-top: 10px;
+      min-height: 18px;
+      font-size: 12px;
+      color: #a6adc8;
+      line-height: 1.5;
+    }
+    #status.success { color: #a6e3a1; }
+    #status.error   { color: #f38ba8; }
+    #status.loading { color: #f9e2af; }
+
+    #progress {
+      display: none;
+      margin-top: 8px;
+      height: 3px;
+      background: #313244;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    #progress.active { display: block; }
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: #89dceb;
+      transition: width 0.3s;
+      border-radius: 2px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #313244;
+      margin: 12px 0;
+    }
+
+    #recent-section h2 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #585b70;
+      margin-bottom: 8px;
+    }
+
+    #captures-list {
+      list-style: none;
+    }
+
+    #captures-list li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 0;
+      border-bottom: 1px solid #181825;
+      font-size: 12px;
+    }
+
+    .device-badge {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .device-badge.pc     { background: #313244; color: #cba6f7; }
+    .device-badge.mobile { background: #313244; color: #89dceb; }
+
+    .cap-url {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #bac2de;
+    }
+
+    .cap-time {
+      font-size: 10px;
+      color: #585b70;
+      flex-shrink: 0;
+    }
+
+    #empty-msg {
+      font-size: 12px;
+      color: #585b70;
+      text-align: center;
+      padding: 8px 0;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📸 wsc</h1>
+    <span id="server-badge">確認中...</span>
+  </header>
+
+  <main>
+    <div id="url-box" title="">読み込み中...</div>
+
+    <input type="text" id="label" placeholder="ラベル（任意）" maxlength="80">
+
+    <button id="capture-btn" disabled>PC・モバイル 両方キャプチャ</button>
+
+    <div id="progress"><div id="progress-bar"></div></div>
+    <div id="status"></div>
+
+    <hr class="divider">
+
+    <section id="recent-section">
+      <h2>最近のキャプチャ</h2>
+      <ul id="captures-list">
+        <li><span id="empty-msg">読み込み中...</span></li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+</html>
