@@ -7,6 +7,7 @@ import { makeCommentCommand } from './commands/comment.js';
 import { makeAnnotationCommand } from './commands/annotation.js';
 import { makeExportCommand } from './commands/export.js';
 import { makeServeCommand } from './commands/serve.js';
+import { makeViewCommand } from './commands/view.js';
 
 const program = new Command();
 
@@ -22,6 +23,7 @@ program.addCommand(makeCommentCommand());
 program.addCommand(makeAnnotationCommand());
 program.addCommand(makeExportCommand());
 program.addCommand(makeServeCommand());
+program.addCommand(makeViewCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   process.stderr.write(`Fatal error: ${String(err)}\n`);
