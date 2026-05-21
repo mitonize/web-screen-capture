@@ -6,8 +6,8 @@
  *
  * フロー:
  *   1. 現在のタブにデバッガを接続
- *   2. PC: 現在の状態のままフルページをキャプチャ（再ナビゲーションなし）
- *   3. Mobile: デバイスエミュレーションを適用 → キャプチャ → 元の状態に復元
+ *   2. PC: オートスクロール → fixed要素変換 → フルページキャプチャ（再ナビゲーションなし）
+ *   3. Mobile: デバイスエミュレーション適用 → オートスクロール → fixed要素変換 → キャプチャ → 復元
  *   4. デバッガを切断
  *   5. base64 PNG を wsc サーバーの /capture-image へ POST
  */
@@ -57,9 +57,67 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ── Lazy-load preparation ─────────────────────────────────────────────────────
+
+/**
+ * ページをビューポート高さ刻みでスクロールして IntersectionObserver を発火させ、
+ * トップに戻った後 position:fixed 要素を absolute に変換する。
+ * これにより lazy-load コンテンツが重複なく表示され、fixed ヘッダーも
+ * フルページ画像内で正しい位置に一度だけ現れる。
+ */
+async function preparePageForCapture(target, viewportHeight) {
+  // Step 1: scroll down in viewport-height steps via rAF to trigger observers
+  await dbgSend(target, 'Runtime.evaluate', {
+    expression: `
+      new Promise((resolve) => {
+        const step = ${viewportHeight};
+        const total = document.body.scrollHeight;
+        let pos = 0;
+        function tick() {
+          pos += step;
+          window.scrollTo(0, pos);
+          if (pos < total) { requestAnimationFrame(tick); }
+          else { resolve(); }
+        }
+        tick();
+      })
+    `,
+    awaitPromise: true,
+    timeout: 15000,
+  });
+
+  // Step 2: short pause for async content triggered by scroll
+  await sleep(400);
+
+  // Step 3: scroll back to top
+  await dbgSend(target, 'Runtime.evaluate', {
+    expression: 'window.scrollTo(0, 0)',
+  });
+
+  // Step 4: wait briefly for any newly-triggered network requests
+  await sleep(300);
+
+  // Step 5: convert position:fixed → position:absolute so fixed headers/footers
+  // appear only once at their natural position in the full-page screenshot.
+  // position:sticky elements are unaffected.
+  await dbgSend(target, 'Runtime.evaluate', {
+    expression: `
+      (function() {
+        for (const el of document.querySelectorAll('*')) {
+          if (getComputedStyle(el).position === 'fixed') {
+            el.style.setProperty('position', 'absolute', 'important');
+          }
+        }
+      })()
+    `,
+  });
+}
+
 // ── Full-page screenshot (no navigation) ─────────────────────────────────────
 
-async function captureFullPage(target) {
+async function captureFullPage(target, viewportHeight) {
+  await preparePageForCapture(target, viewportHeight);
+
   const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
   const width   = Math.ceil(metrics.cssContentSize.width);
   const height  = Math.ceil(metrics.cssContentSize.height);
@@ -81,17 +139,17 @@ async function handleCapture({ tabId, url, label }) {
   try {
     await dbgAttach(target);
 
-    // ---- PC: capture current state as-is (no reload) ----
-    const pc = await captureFullPage(target);
+    // ---- PC: scroll to trigger lazy load, then capture ----
+    const pc = await captureFullPage(target, 720);
 
-    // ---- Mobile: emulate → capture → restore ----
+    // ---- Mobile: emulate → scroll to trigger lazy load → capture → restore ----
     await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
     await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
-    await sleep(600); // wait for responsive layout to reflow
+    await sleep(700); // wait for responsive layout to reflow
 
-    const mobile = await captureFullPage(target);
+    const mobile = await captureFullPage(target, MOBILE_METRICS.height);
 
-    // Restore original state
+    // Restore original viewport and user-agent
     await dbgSend(target, 'Emulation.clearDeviceMetricsOverride', {});
     await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: '' });
 
@@ -137,3 +195,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true; // keep message channel open for async response
   }
 });
+
