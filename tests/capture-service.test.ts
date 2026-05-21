@@ -174,4 +174,31 @@ describe('CaptureService', () => {
       expect.objectContaining({ viewportWidth: 1920, viewportHeight: 1080 }),
     );
   });
+
+  it('defaults to pc device type', async () => {
+    const results = await service.captureAll([{ url: 'https://example.com' }]);
+    expect(results[0]?.capture.device_type).toBe('pc');
+  });
+
+  it('captures with mobile device type', async () => {
+    const results = await service.captureAll(
+      [{ url: 'https://example.com' }],
+      { devices: ['mobile'] },
+    );
+    expect(results[0]?.capture.device_type).toBe('mobile');
+    expect(results[0]?.capture.viewport_width).toBe(390);
+    expect(results[0]?.capture.viewport_height).toBe(844);
+  });
+
+  it('captures both pc and mobile when both devices specified', async () => {
+    const results = await service.captureAll(
+      [{ url: 'https://example.com' }],
+      { devices: ['pc', 'mobile'] },
+    );
+    expect(results).toHaveLength(2);
+    const pcResult = results.find((r) => r.capture.device_type === 'pc');
+    const mobileResult = results.find((r) => r.capture.device_type === 'mobile');
+    expect(pcResult).toBeDefined();
+    expect(mobileResult).toBeDefined();
+  });
 });

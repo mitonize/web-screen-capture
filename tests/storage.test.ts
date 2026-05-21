@@ -31,6 +31,7 @@ function makeCapture(overrides: Partial<{
     viewport_width: 1280,
     viewport_height: 720,
     full_page: true,
+    device_type: 'pc' as const,
   };
 }
 

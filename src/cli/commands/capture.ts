@@ -5,6 +5,7 @@ import { loadConfig } from '../../core/config.js';
 import { CaptureService } from '../../core/capture-service.js';
 import { printSuccess, printError, printJson } from '../output.js';
 import type { CaptureInput } from '../../core/capture-service.js';
+import type { DeviceType } from '../../models/capture.js';
 
 export function makeCaptureCommand(): Command {
   const cmd = new Command('capture');
@@ -13,8 +14,9 @@ export function makeCaptureCommand(): Command {
     .option('-u, --url <url...>', 'URL(s) to capture')
     .option('-f, --url-file <file>', 'File containing URLs (one per line)')
     .option('-l, --label <label>', 'Label for this capture batch')
-    .option('--viewport-width <n>', 'Viewport width', '1280')
-    .option('--viewport-height <n>', 'Viewport height', '720')
+    .option('-d, --device <device...>', 'Device type(s): pc, mobile (default: pc)', ['pc'])
+    .option('--viewport-width <n>', 'Viewport width (overrides device preset)')
+    .option('--viewport-height <n>', 'Viewport height (overrides device preset)')
     .option('--no-full-page', 'Disable full-page capture')
     .option('--timeout <ms>', 'Timeout per page in milliseconds', '30000')
     .option('--retries <n>', 'Retry attempts per URL', '3')
@@ -25,8 +27,9 @@ export function makeCaptureCommand(): Command {
       url?: string[];
       urlFile?: string;
       label?: string;
-      viewportWidth: string;
-      viewportHeight: string;
+      device: string[];
+      viewportWidth?: string;
+      viewportHeight?: string;
       fullPage: boolean;
       timeout: string;
       retries: string;
@@ -56,7 +59,7 @@ export function makeCaptureCommand(): Command {
           for (const line of lines) {
             inputs.push({ url: line, label: opts.label });
           }
-        } catch (err) {
+        } catch {
           printError(`Cannot read URL file: ${opts.urlFile}`);
           process.exit(2);
         }
@@ -67,16 +70,27 @@ export function makeCaptureCommand(): Command {
         process.exit(2);
       }
 
+      // Validate device types
+      const validDevices: DeviceType[] = [];
+      for (const d of opts.device) {
+        if (d !== 'pc' && d !== 'mobile') {
+          printError(`Invalid device type: "${d}". Use "pc" or "mobile".`);
+          process.exit(2);
+        }
+        validDevices.push(d as DeviceType);
+      }
+
       const captureConfig = config.capture;
       const service = new CaptureService(storage);
 
       const results = await service.captureAll(inputs, {
         concurrency: parseInt(opts.concurrency, 10) || captureConfig.concurrency,
         retries: parseInt(opts.retries, 10),
-        viewportWidth: parseInt(opts.viewportWidth, 10) || captureConfig.viewport_width,
-        viewportHeight: parseInt(opts.viewportHeight, 10) || captureConfig.viewport_height,
+        viewportWidth: opts.viewportWidth ? parseInt(opts.viewportWidth, 10) : undefined,
+        viewportHeight: opts.viewportHeight ? parseInt(opts.viewportHeight, 10) : undefined,
         fullPage: opts.fullPage,
         timeoutMs: parseInt(opts.timeout, 10) || captureConfig.timeout_ms,
+        devices: validDevices,
       });
 
       const failures = results.filter((r) => !r.success);
@@ -85,10 +99,11 @@ export function makeCaptureCommand(): Command {
         printJson(results.map((r) => r.capture));
       } else {
         for (const r of results) {
+          const deviceLabel = `[${r.capture.device_type}]`;
           if (r.success) {
-            printSuccess(`✓ ${r.capture.url} → ${r.capture.id}`);
+            printSuccess(`✓ ${deviceLabel} ${r.capture.url} → ${r.capture.id}`);
           } else {
-            printError(`✗ ${r.capture.url}: ${r.capture.error ?? 'unknown error'}`);
+            printError(`✗ ${deviceLabel} ${r.capture.url}: ${r.capture.error ?? 'unknown error'}`);
           }
         }
       }

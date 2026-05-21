@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { StorageBackend } from '../storage/interface.js';
-import type { Capture } from '../models/capture.js';
+import type { Capture, DeviceType } from '../models/capture.js';
+import { DEVICE_PRESETS } from '../models/capture.js';
 import { launchBrowser, captureScreenshot } from './browser.js';
 import type { ScreenshotOptions } from './browser.js';
 
@@ -12,6 +13,7 @@ export interface CaptureInput {
 export interface CaptureOptions extends ScreenshotOptions {
   concurrency?: number;
   retries?: number;
+  devices?: DeviceType[];
 }
 
 export interface CaptureResult {
@@ -51,11 +53,15 @@ export class CaptureService {
     const {
       concurrency = 5,
       retries = 3,
-      viewportWidth = 1280,
-      viewportHeight = 720,
       fullPage = true,
       timeoutMs = 30000,
+      devices = ['pc'],
     } = options;
+
+    // Expand inputs by device: each URL × each device
+    const expandedInputs = inputs.flatMap((input) =>
+      devices.map((device) => ({ ...input, deviceType: device as DeviceType })),
+    );
 
     const browser = await launchBrowser();
     const results: CaptureResult[] = [];
@@ -63,19 +69,23 @@ export class CaptureService {
     try {
       const semaphore = new Semaphore(concurrency);
 
-      const tasks = inputs.map((input) =>
+      const tasks = expandedInputs.map((input) =>
         semaphore.run(async () => {
           const id = uuidv4();
           const capturedAt = new Date().toISOString();
+          const preset = DEVICE_PRESETS[input.deviceType];
+          const vw = options.viewportWidth ?? preset.width;
+          const vh = options.viewportHeight ?? preset.height;
 
           try {
             const imageData = await withRetry(
               () =>
                 captureScreenshot(browser, input.url, {
-                  viewportWidth,
-                  viewportHeight,
+                  viewportWidth: vw,
+                  viewportHeight: vh,
                   fullPage,
                   timeoutMs,
+                  deviceType: input.deviceType,
                 }),
               retries,
             );
@@ -90,9 +100,10 @@ export class CaptureService {
               image_path: imagePath,
               status: 'success',
               error: null,
-              viewport_width: viewportWidth,
-              viewport_height: viewportHeight,
+              viewport_width: vw,
+              viewport_height: vh,
               full_page: fullPage,
+              device_type: input.deviceType,
             };
 
             await this.storage.saveCapture(capture);
@@ -109,9 +120,10 @@ export class CaptureService {
               image_path: `images/${id}.png`,
               status: 'failure',
               error: errorMsg,
-              viewport_width: viewportWidth,
-              viewport_height: viewportHeight,
+              viewport_width: vw,
+              viewport_height: vh,
               full_page: fullPage,
+              device_type: input.deviceType,
             };
 
             await this.storage.saveCapture(capture);
