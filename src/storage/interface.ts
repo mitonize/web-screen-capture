@@ -18,6 +18,9 @@ export interface StorageBackend {
   findAnnotation(id: string): Promise<Annotation | null>;
   deleteAnnotation(id: string): Promise<boolean>;
 
+  deleteCapture(id: string): Promise<boolean>;
+  cleanupOrphanedMetadata(): Promise<string[]>;
+
   saveImage(captureId: string, data: Buffer): Promise<string>;
   readImage(captureId: string): Promise<Buffer | null>;
 }

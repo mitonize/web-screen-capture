@@ -205,4 +205,76 @@ describe('FilesystemStorage', () => {
     const result = await storage.readImage('nonexistent-id');
     expect(result).toBeNull();
   });
+
+  describe('deleteCapture', () => {
+    it('removes capture, related comments, annotations, and image', async () => {
+      const cap = makeCapture();
+      await storage.saveCapture(cap);
+      await storage.saveImage(cap.id, MINIMAL_PNG);
+
+      const comment = {
+        id: '550e8400-e29b-41d4-a716-446655440010',
+        capture_id: cap.id,
+        parent_id: null,
+        author: 'Alice',
+        message: 'Test',
+        created_at: '2026-05-20T10:31:00.000Z',
+      };
+      const annotation = {
+        id: '550e8400-e29b-41d4-a716-446655440020',
+        capture_id: cap.id,
+        type: 'rect' as const,
+        author: 'Alice',
+        created_at: '2026-05-20T10:31:00.000Z',
+        color: null,
+        label: null,
+        x: 0, y: 0, width: 10, height: 10, x2: null, y2: null,
+      };
+      await storage.saveComment(comment);
+      await storage.saveAnnotation(annotation);
+
+      const deleted = await storage.deleteCapture(cap.id);
+      expect(deleted).toBe(true);
+
+      expect(await storage.findCapture(cap.id)).toBeNull();
+      expect(await storage.findComment(comment.id)).toBeNull();
+      expect(await storage.findAnnotation(annotation.id)).toBeNull();
+      expect(await storage.readImage(cap.id)).toBeNull();
+    });
+
+    it('returns false when capture does not exist', async () => {
+      expect(await storage.deleteCapture('nonexistent-id')).toBe(false);
+    });
+  });
+
+  describe('cleanupOrphanedMetadata', () => {
+    it('removes captures whose image files are missing', async () => {
+      const cap1 = makeCapture({ id: '550e8400-e29b-41d4-a716-446655440001' });
+      const cap2 = makeCapture({ id: '550e8400-e29b-41d4-a716-446655440002' });
+      await storage.saveCapture(cap1);
+      await storage.saveCapture(cap2);
+      // only save image for cap1
+      await storage.saveImage(cap1.id, MINIMAL_PNG);
+
+      const removed = await storage.cleanupOrphanedMetadata();
+      expect(removed).toEqual([cap2.id]);
+
+      expect(await storage.findCapture(cap1.id)).not.toBeNull();
+      expect(await storage.findCapture(cap2.id)).toBeNull();
+    });
+
+    it('returns empty array when all images are present', async () => {
+      const cap = makeCapture();
+      await storage.saveCapture(cap);
+      await storage.saveImage(cap.id, MINIMAL_PNG);
+
+      const removed = await storage.cleanupOrphanedMetadata();
+      expect(removed).toHaveLength(0);
+    });
+
+    it('returns empty array when there are no captures', async () => {
+      const removed = await storage.cleanupOrphanedMetadata();
+      expect(removed).toHaveLength(0);
+    });
+  });
 });

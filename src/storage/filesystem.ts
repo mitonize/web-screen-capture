@@ -203,6 +203,58 @@ export class FilesystemStorage implements StorageBackend {
     });
   }
 
+  async deleteCapture(id: string): Promise<boolean> {
+    let removed = false;
+
+    await this.capturesMutex.run(async () => {
+      const file = await this.readCapturesFile();
+      const before = file.captures.length;
+      file.captures = file.captures.filter((c) => c.id !== id);
+      if (file.captures.length < before) {
+        await this.writeCapturesFile(file);
+        removed = true;
+      }
+    });
+
+    if (!removed) return false;
+
+    await this.commentsMutex.run(async () => {
+      const file = await this.readCommentsFile();
+      file.comments = file.comments.filter((c) => c.capture_id !== id);
+      await this.writeCommentsFile(file);
+    });
+
+    await this.annotationsMutex.run(async () => {
+      const file = await this.readAnnotationsFile();
+      file.annotations = file.annotations.filter((a) => a.capture_id !== id);
+      await this.writeAnnotationsFile(file);
+    });
+
+    try {
+      await fs.unlink(path.join(this.imagesDir, `${id}.png`));
+    } catch {
+      // image may already be gone – that's fine
+    }
+
+    return true;
+  }
+
+  async cleanupOrphanedMetadata(): Promise<string[]> {
+    const captures = await this.listCaptures();
+    const removed: string[] = [];
+
+    for (const capture of captures) {
+      const imagePath = path.join(this.imagesDir, `${capture.id}.png`);
+      const exists = await fs.access(imagePath).then(() => true).catch(() => false);
+      if (!exists) {
+        await this.deleteCapture(capture.id);
+        removed.push(capture.id);
+      }
+    }
+
+    return removed;
+  }
+
   async saveImage(captureId: string, data: Buffer): Promise<string> {
     const filename = `${captureId}.png`;
     const fullPath = path.join(this.imagesDir, filename);
