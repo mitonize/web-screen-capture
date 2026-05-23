@@ -15,7 +15,9 @@ export function makeListCommand(): Command {
       const storage = createStorage(opts.storageDir);
       await storage.init();
 
-      let captures = await storage.listCaptures();
+      let captures = (await storage.listCaptures()).sort(
+        (a, b) => b.captured_at.localeCompare(a.captured_at),
+      );
 
       if (opts.device) {
         if (opts.device !== 'pc' && opts.device !== 'mobile') {
