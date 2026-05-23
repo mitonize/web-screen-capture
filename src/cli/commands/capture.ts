@@ -18,6 +18,7 @@ export function makeCaptureCommand(): Command {
     .option('--viewport-width <n>', 'Viewport width (overrides device preset)')
     .option('--viewport-height <n>', 'Viewport height (overrides device preset)')
     .option('--no-full-page', 'Disable full-page capture')
+    .option('--no-scroll', 'Skip scroll-before-capture (disables lazy-load triggering; useful if repeated content appears at the bottom)')
     .option('--timeout <ms>', 'Timeout per page in milliseconds', '30000')
     .option('--retries <n>', 'Retry attempts per URL', '3')
     .option('--concurrency <n>', 'Max concurrent captures', '5')
@@ -31,6 +32,7 @@ export function makeCaptureCommand(): Command {
       viewportWidth?: string;
       viewportHeight?: string;
       fullPage: boolean;
+      scroll: boolean;
       timeout: string;
       retries: string;
       concurrency: string;
@@ -89,6 +91,7 @@ export function makeCaptureCommand(): Command {
         viewportWidth: opts.viewportWidth ? parseInt(opts.viewportWidth, 10) : undefined,
         viewportHeight: opts.viewportHeight ? parseInt(opts.viewportHeight, 10) : undefined,
         fullPage: opts.fullPage,
+        scrollBeforeCapture: opts.scroll,
         timeoutMs: parseInt(opts.timeout, 10) || captureConfig.timeout_ms,
         devices: validDevices,
       });

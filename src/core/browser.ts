@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import type { Browser, Page } from 'playwright';
+import type { Browser, Page, CDPSession } from 'playwright';
 import type { DeviceType } from '../models/capture.js';
 import { DEVICE_PRESETS } from '../models/capture.js';
 
@@ -24,23 +24,21 @@ export async function launchBrowser(): Promise<Browser> {
 
 /**
  * Scrolls the page in viewport-height steps to trigger lazy loading,
- * returns to the top, then converts position:fixed elements to
- * position:absolute so they appear correctly in full-page screenshots.
+ * then returns to the top. Returns the page height recorded BEFORE scrolling
+ * so callers can clip the screenshot to that height — preventing dynamically
+ * appended content (infinite scroll, recommendation carousels) from appearing.
  */
-async function preparePageForCapture(
-  page: Page,
-  viewportHeight: number,
-  timeoutMs: number,
-): Promise<void> {
-  // Scroll down step by step to trigger IntersectionObserver callbacks
-  await page.evaluate(async (stepPx: number) => {
+async function scrollPage(page: Page, viewportHeight: number, timeoutMs: number): Promise<number> {
+  // Record height before any scrolling
+  const initialHeight = await page.evaluate(() => document.documentElement.scrollHeight);
+
+  await page.evaluate(async ({ stepPx, limit }: { stepPx: number; limit: number }) => {
     await new Promise<void>((resolve) => {
-      const totalHeight = document.body.scrollHeight;
       let current = 0;
       function step() {
         current += stepPx;
         window.scrollTo(0, current);
-        if (current < totalHeight) {
+        if (current < limit) {
           requestAnimationFrame(step);
         } else {
           resolve();
@@ -48,26 +46,37 @@ async function preparePageForCapture(
       }
       step();
     });
-  }, viewportHeight);
+  }, { stepPx: viewportHeight, limit: initialHeight });
 
-  // Brief pause for async content triggered by scroll
   await page.waitForTimeout(400);
-
-  // Return to top
   await page.evaluate(() => window.scrollTo(0, 0));
-
-  // Wait for newly triggered requests to settle
   await page.waitForLoadState('networkidle', { timeout: timeoutMs }).catch(() => undefined);
 
-  // Convert position:fixed → position:absolute so fixed headers/footers
-  // appear only once at their natural position in the full-page screenshot
-  await page.evaluate(() => {
-    for (const el of document.querySelectorAll<HTMLElement>('*')) {
-      if (getComputedStyle(el).position === 'fixed') {
-        el.style.setProperty('position', 'absolute', 'important');
-      }
-    }
-  });
+  return initialHeight;
+}
+
+/**
+ * Takes a full-page screenshot using CDP's captureBeyondViewport.
+ * clipHeight limits the captured area to the pre-scroll height, excluding
+ * any content dynamically appended during scroll (infinite scroll, etc.).
+ */
+async function cdpFullPageScreenshot(
+  page: Page,
+  viewportWidth: number,
+  clipHeight?: number,
+): Promise<Buffer> {
+  const fullHeight = clipHeight ?? await page.evaluate(() => document.documentElement.scrollHeight);
+  const cdp: CDPSession = await page.context().newCDPSession(page);
+  try {
+    const result = await cdp.send('Page.captureScreenshot', {
+      format: 'png',
+      clip: { x: 0, y: 0, width: viewportWidth, height: fullHeight, scale: 1 },
+      captureBeyondViewport: true,
+    });
+    return Buffer.from(result.data as string, 'base64');
+  } finally {
+    await cdp.detach().catch(() => undefined);
+  }
 }
 
 export async function captureScreenshot(
@@ -92,6 +101,8 @@ export async function captureScreenshot(
 
   if (preset.userAgent) {
     contextOptions.userAgent = preset.userAgent;
+    contextOptions.isMobile = true;
+    contextOptions.hasTouch = true;
   }
 
   const context = await browser.newContext(contextOptions);
@@ -103,11 +114,11 @@ export async function captureScreenshot(
     await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
     if (fullPage && scrollBeforeCapture) {
-      await preparePageForCapture(page, viewportHeight, timeoutMs);
+      const initialHeight = await scrollPage(page, viewportHeight, timeoutMs);
+      return await cdpFullPageScreenshot(page, viewportWidth, initialHeight);
     }
 
-    const data = await page.screenshot({ fullPage });
-    return data;
+    return await page.screenshot({ fullPage });
   } finally {
     if (page) await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);

@@ -17,7 +17,7 @@ const WSC_SERVER = 'http://127.0.0.1:4242';
 const MOBILE_METRICS = {
   width: 390,
   height: 844,
-  deviceScaleFactor: 3,
+  deviceScaleFactor: 1,
   mobile: true,
   screenWidth: 390,
   screenHeight: 844,
@@ -61,22 +61,31 @@ function sleep(ms) {
 
 /**
  * ページをビューポート高さ刻みでスクロールして IntersectionObserver を発火させ、
- * トップに戻った後 position:fixed 要素を absolute に変換する。
- * これにより lazy-load コンテンツが重複なく表示され、fixed ヘッダーも
+ * トップに戻った後 position:fixed / position:sticky 要素を変換する。
+ * これにより lazy-load コンテンツが重複なく表示され、fixed/sticky ヘッダーも
  * フルページ画像内で正しい位置に一度だけ現れる。
  */
 async function preparePageForCapture(target, viewportHeight) {
-  // Step 1: scroll down in viewport-height steps via rAF to trigger observers
+  // Record the initial page height BEFORE scrolling.
+  // Pages with infinite scroll or dynamic content injection will grow as we
+  // scroll; we cap scrolling and the final clip to this pre-scroll height so
+  // dynamically appended content is never included in the screenshot.
+  const { result: { value: initialHeight } } = await dbgSend(target, 'Runtime.evaluate', {
+    expression: 'document.documentElement.scrollHeight',
+    returnByValue: true,
+  });
+
+  // Step 1: scroll down in viewport-height steps, but only up to initialHeight
   await dbgSend(target, 'Runtime.evaluate', {
     expression: `
       new Promise((resolve) => {
-        const step = ${viewportHeight};
-        const total = document.body.scrollHeight;
+        const step  = ${viewportHeight};
+        const limit = ${initialHeight};
         let pos = 0;
         function tick() {
           pos += step;
           window.scrollTo(0, pos);
-          if (pos < total) { requestAnimationFrame(tick); }
+          if (pos < limit) { requestAnimationFrame(tick); }
           else { resolve(); }
         }
         tick();
@@ -97,30 +106,41 @@ async function preparePageForCapture(target, viewportHeight) {
   // Step 4: wait briefly for any newly-triggered network requests
   await sleep(300);
 
-  // Step 5: convert position:fixed → position:absolute so fixed headers/footers
+  // Step 5: convert fixed→absolute and sticky→relative so headers/footers
   // appear only once at their natural position in the full-page screenshot.
-  // position:sticky elements are unaffected.
   await dbgSend(target, 'Runtime.evaluate', {
     expression: `
       (function() {
         for (const el of document.querySelectorAll('*')) {
-          if (getComputedStyle(el).position === 'fixed') {
+          const pos = getComputedStyle(el).position;
+          if (pos === 'fixed') {
             el.style.setProperty('position', 'absolute', 'important');
+          } else if (pos === 'sticky') {
+            el.style.setProperty('position', 'relative', 'important');
           }
         }
       })()
     `,
   });
+
+  return initialHeight;
 }
 
 // ── Full-page screenshot (no navigation) ─────────────────────────────────────
 
-async function captureFullPage(target, viewportHeight) {
-  await preparePageForCapture(target, viewportHeight);
+async function captureFullPage(target, viewportHeight, noScroll = false) {
+  let clipHeight;
+
+  if (!noScroll) {
+    // preparePageForCapture returns the pre-scroll height; use that as clip
+    // so dynamically appended content (infinite scroll, recommendations) is excluded.
+    clipHeight = await preparePageForCapture(target, viewportHeight);
+  }
 
   const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
   const width   = Math.ceil(metrics.cssContentSize.width);
-  const height  = Math.ceil(metrics.cssContentSize.height);
+  // Use pre-scroll height when available to exclude dynamically added content.
+  const height  = clipHeight ?? Math.ceil(metrics.cssContentSize.height);
 
   const result = await dbgSend(target, 'Page.captureScreenshot', {
     format: 'png',
@@ -131,23 +151,58 @@ async function captureFullPage(target, viewportHeight) {
   return { imageData: result.data, width, height };
 }
 
+// ── Mobile full-page screenshot ───────────────────────────────────────────────
+// captureBeyondViewport + setDeviceMetricsOverride can cause GPU tile repetition
+// for long pages. Instead, we temporarily set the viewport height equal to the
+// full page height so the entire content fits in one viewport, then capture
+// without captureBeyondViewport.
+
+async function captureMobilePage(target, noScroll = false) {
+  const { width: mobileWidth } = MOBILE_METRICS;
+
+  // Scroll to trigger lazy load and convert fixed/sticky elements
+  let clipHeight;
+  if (!noScroll) {
+    clipHeight = await preparePageForCapture(target, MOBILE_METRICS.height);
+  }
+
+  const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
+  const pageHeight = clipHeight ?? Math.ceil(metrics.cssContentSize.height);
+
+  // Expand the viewport to the full page height to avoid GPU tiling artifacts.
+  await dbgSend(target, 'Emulation.setDeviceMetricsOverride', {
+    ...MOBILE_METRICS,
+    height: pageHeight,
+    screenHeight: pageHeight,
+  });
+  await sleep(200); // let layout settle after viewport resize
+
+  const result = await dbgSend(target, 'Page.captureScreenshot', {
+    format: 'png',
+    captureBeyondViewport: false,
+    clip: { x: 0, y: 0, width: mobileWidth, height: pageHeight, scale: 1 },
+  });
+
+  return { imageData: result.data, width: mobileWidth, height: pageHeight };
+}
+
 // ── Main capture handler ──────────────────────────────────────────────────────
 
-async function handleCapture({ tabId, url, label }) {
+async function handleCapture({ tabId, url, label, noScroll = false }) {
   const target = { tabId };
 
   try {
     await dbgAttach(target);
 
     // ---- PC: scroll to trigger lazy load, then capture ----
-    const pc = await captureFullPage(target, 720);
+    const pc = await captureFullPage(target, 720, noScroll);
 
-    // ---- Mobile: emulate → scroll to trigger lazy load → capture → restore ----
+    // ---- Mobile: emulate → measure full page height → expand viewport → capture → restore ----
     await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
     await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
     await sleep(700); // wait for responsive layout to reflow
 
-    const mobile = await captureFullPage(target, MOBILE_METRICS.height);
+    const mobile = await captureMobilePage(target, noScroll);
 
     // Restore original viewport and user-agent
     await dbgSend(target, 'Emulation.clearDeviceMetricsOverride', {});

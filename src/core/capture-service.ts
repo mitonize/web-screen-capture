@@ -54,6 +54,7 @@ export class CaptureService {
       concurrency = 5,
       retries = 3,
       fullPage = true,
+      scrollBeforeCapture = true,
       timeoutMs = 30000,
       devices = ['pc'],
     } = options;
@@ -84,6 +85,7 @@ export class CaptureService {
                   viewportWidth: vw,
                   viewportHeight: vh,
                   fullPage,
+                  scrollBeforeCapture,
                   timeoutMs,
                   deviceType: input.deviceType,
                 }),
