@@ -3,6 +3,8 @@ import http from 'node:http';
 import { v4 as uuidv4 } from 'uuid';
 import { createStorage } from '../../storage/index.js';
 import { CaptureService } from '../../core/capture-service.js';
+import { resizeToThumbnail } from '../../core/image-processor.js';
+import { renderGalleryPage } from '../../core/gallery-renderer.js';
 import { printSuccess, printError } from '../output.js';
 import type { StorageBackend } from '../../storage/interface.js';
 import type { DeviceType, Capture } from '../../models/capture.js';
@@ -51,6 +53,69 @@ export function createRequestHandler(
     const url = new URL(req.url ?? '/', base);
 
     try {
+      if (req.method === 'GET' && url.pathname === '/') {
+        // Gallery page with pagination
+        const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
+        const perPage = Math.min(100, Math.max(1, parseInt(url.searchParams.get('per_page') ?? '12', 10)));
+
+        const allCaptures = await storage.listCaptures();
+        const sortedCaptures = allCaptures.slice().reverse(); // Newest first
+        const totalCaptures = sortedCaptures.length;
+
+        const startIdx = (page - 1) * perPage;
+        const endIdx = startIdx + perPage;
+        const pageCaptures = sortedCaptures.slice(startIdx, endIdx);
+
+        const html = renderGalleryPage({
+          captures: pageCaptures,
+          currentPage: page,
+          perPage,
+          totalCaptures,
+        });
+
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Content-Length': Buffer.byteLength(html),
+        });
+        res.end(html);
+        return;
+      }
+
+      // GET /images/:id - serve image (full or thumbnail)
+      const imageMatch = url.pathname.match(/^\/images\/([a-f0-9\-]+)$/);
+      if (req.method === 'GET' && imageMatch) {
+        const captureId = imageMatch[1];
+        const sizeParam = url.searchParams.get('size') ?? 'full';
+
+        const imageBuffer = await storage.readImage(captureId);
+        if (!imageBuffer) {
+          sendJson(res, 404, { error: 'Image not found' });
+          return;
+        }
+
+        let outputBuffer = imageBuffer;
+        let contentType = 'image/jpeg'; // default
+
+        if (sizeParam === 'thumbnail') {
+          try {
+            outputBuffer = await resizeToThumbnail(imageBuffer);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            printError(`Failed to resize thumbnail: ${msg}`);
+            sendJson(res, 500, { error: 'Failed to resize image' });
+            return;
+          }
+        }
+
+        res.writeHead(200, {
+          'Content-Type': contentType,
+          'Content-Length': outputBuffer.length,
+          'Cache-Control': 'max-age=86400', // 24 hours
+        });
+        res.end(outputBuffer);
+        return;
+      }
+
       if (req.method === 'GET' && url.pathname === '/status') {
         sendJson(res, 200, { status: 'ok', version: '1.0.0' });
         return;
@@ -225,8 +290,12 @@ export function makeServeCommand(): Command {
         printSuccess(`wsc server running at http://${host}:${port}`);
         printSuccess('');
         printSuccess('Endpoints:');
+        printSuccess(`  GET  /                — gallery HTML page (with pagination)`);
+        printSuccess(`                          ?page=1&per_page=12`);
+        printSuccess(`  GET  /images/:id      — image file (full or thumbnail)`);
+        printSuccess(`                          ?size=thumbnail (300x300px, top crop)`);
         printSuccess(`  GET  /status          — health check`);
-        printSuccess(`  GET  /captures        — list recent captures (latest 20)`);
+        printSuccess(`  GET  /captures        — list recent captures (latest 20, JSON)`);
         printSuccess(`  POST /capture         — capture a URL (Playwright)`);
         printSuccess(`                          body: { "url": "...", "label": "...", "devices": ["pc","mobile"] }`);
         printSuccess(`  POST /capture-image   — save pre-captured images (browser extension)`);

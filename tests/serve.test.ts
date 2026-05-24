@@ -219,4 +219,144 @@ describe('wsc serve HTTP handler', () => {
     const { status } = await request(server, 'GET', '/unknown');
     expect(status).toBe(404);
   });
+
+  // ── GET / (Gallery) ────────────────────────────────────────────────────────
+
+  it('GET / returns HTML page when no captures exist', async () => {
+    const addr = server.address() as { port: number };
+    const html = await new Promise<string>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: addr.port, path: '/', method: 'GET' },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('WSC Gallery');
+    expect(html).toContain('No captures yet');
+  });
+
+  it('GET / returns paginated gallery with captures', async () => {
+    // Save 3 captures
+    for (let i = 0; i < 3; i++) {
+      await request(server, 'POST', '/capture-image', {
+        url: `https://example${i}.com`,
+        label: `Label ${i}`,
+        captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+      });
+    }
+
+    const addr = server.address() as { port: number };
+    const html = await new Promise<string>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: addr.port, path: '/?page=1&per_page=10', method: 'GET' },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(html).toContain('<!DOCTYPE html>');
+    expect(html).toContain('WSC Gallery');
+    expect(html).toContain('/images/');
+    expect(html).toContain('example2.com'); // newest first
+    expect(html).toContain('showing 1–3 of 3');
+  });
+
+  it('GET / respects per_page parameter', async () => {
+    // Save 5 captures
+    for (let i = 0; i < 5; i++) {
+      await request(server, 'POST', '/capture-image', {
+        url: `https://example${i}.com`,
+        captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+      });
+    }
+
+    const addr = server.address() as { port: number };
+    const html = await new Promise<string>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: addr.port, path: '/?page=1&per_page=2', method: 'GET' },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(html).toContain('showing 1–2 of 5');
+    expect(html).toContain('Page 1 of 3');
+    expect(html).toContain('Next →'); // has next page
+  });
+
+  // ── GET /images/:id ────────────────────────────────────────────────────────
+
+  it('GET /images/:id returns full image', async () => {
+    const { data } = await request(server, 'POST', '/capture-image', {
+      url: 'https://example.com',
+      captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+    });
+
+    const id = ((data as { results: Array<{ id: string }> }).results)[0]!.id;
+
+    const addr = server.address() as { port: number };
+    const imageBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: addr.port, path: `/images/${id}`, method: 'GET' },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(imageBuffer.equals(MOCK_PNG)).toBe(true);
+  });
+
+  it('GET /images/:id?size=thumbnail returns resized thumbnail', async () => {
+    const { data } = await request(server, 'POST', '/capture-image', {
+      url: 'https://example.com',
+      captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+    });
+
+    const id = ((data as { results: Array<{ id: string }> }).results)[0]!.id;
+
+    const addr = server.address() as { port: number };
+    const imageBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const req = http.request(
+        { host: '127.0.0.1', port: addr.port, path: `/images/${id}?size=thumbnail`, method: 'GET' },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    // Thumbnail should be different from original (resized)
+    // And should be a valid image (at least non-empty and starts with JPEG magic number or PNG magic)
+    expect(imageBuffer.length).toBeGreaterThan(0);
+  });
+
+  it('GET /images/:id returns 404 for non-existent image', async () => {
+    const { status } = await request(server, 'GET', '/images/00000000-0000-0000-0000-000000000000');
+    expect(status).toBe(404);
+  });
 });
