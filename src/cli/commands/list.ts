@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { createStorage } from '../../storage/index.js';
 import { printJson, formatTable, printSuccess } from '../output.js';
+import { extractDomain } from '../../core/domain-extractor.js';
 import type { DeviceType } from '../../models/capture.js';
 
 export function makeListCommand(): Command {
@@ -9,9 +10,10 @@ export function makeListCommand(): Command {
     .description('List all captures')
     .option('-d, --device <device>', 'Filter by device type: pc, mobile')
     .option('-u, --url <text>', 'Filter by URL (partial match)')
+    .option('--domain <domain>', 'Filter by domain')
     .option('--json', 'Output as JSON')
     .option('--storage-dir <dir>', 'Storage directory override')
-    .action(async (opts: { device?: string; url?: string; json?: boolean; storageDir?: string }) => {
+    .action(async (opts: { device?: string; url?: string; domain?: string; json?: boolean; storageDir?: string }) => {
       const storage = createStorage(opts.storageDir);
       await storage.init();
 
@@ -30,6 +32,10 @@ export function makeListCommand(): Command {
       if (opts.url) {
         const needle = opts.url.toLowerCase();
         captures = captures.filter((c) => c.url.toLowerCase().includes(needle));
+      }
+
+      if (opts.domain) {
+        captures = captures.filter((c) => extractDomain(c.url) === opts.domain);
       }
 
       if (opts.json) {

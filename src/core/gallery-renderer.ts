@@ -1,17 +1,37 @@
 import type { Capture } from '../models/capture.js';
+import { getUniqueDomains } from './domain-extractor.js';
 
 interface GalleryPageData {
   captures: Capture[];
   currentPage: number;
   perPage: number;
   totalCaptures: number;
+  allCaptures?: Capture[];
+  selectedDomain?: string;
 }
 
 export function renderGalleryPage(data: GalleryPageData): string {
-  const { captures, currentPage, perPage, totalCaptures } = data;
+  const { captures, currentPage, perPage, totalCaptures, allCaptures = [], selectedDomain } = data;
   const totalPages = Math.ceil(totalCaptures / perPage);
   const start = (currentPage - 1) * perPage + 1;
   const end = Math.min(currentPage * perPage, totalCaptures);
+
+  const allDomainsForDropdown = getUniqueDomains(allCaptures);
+  const domainOptions = [
+    '<option value="">All Domains</option>',
+    ...allDomainsForDropdown.map(
+      (domain) => `<option value="${escapeHtml(domain)}"${domain === selectedDomain ? ' selected' : ''}>${escapeHtml(domain)}</option>`,
+    ),
+  ].join('\n');
+
+  const domainFilterHtml = `
+    <div class="domain-filter">
+      <label for="domain-select">Filter by Domain:</label>
+      <select id="domain-select" onchange="handleDomainChange(this.value)">
+        ${domainOptions}
+      </select>
+    </div>
+  `;
 
   const captureItems = captures
     .map((capture) => {
@@ -36,11 +56,13 @@ export function renderGalleryPage(data: GalleryPageData): string {
   const prevPage = currentPage > 1 ? currentPage - 1 : null;
   const nextPage = currentPage < totalPages ? currentPage + 1 : null;
 
+  const domainParam = selectedDomain ? `&domain=${encodeURIComponent(selectedDomain)}` : '';
+
   const pagination = `
     <div class="pagination">
       ${
         prevPage
-          ? `<a href="/?page=${prevPage}&per_page=${perPage}" class="pagination-btn">← Previous</a>`
+          ? `<a href="/?page=${prevPage}&per_page=${perPage}${domainParam}" class="pagination-btn">← Previous</a>`
           : '<span class="pagination-btn disabled">← Previous</span>'
       }
       <span class="pagination-info">
@@ -48,7 +70,7 @@ export function renderGalleryPage(data: GalleryPageData): string {
       </span>
       ${
         nextPage
-          ? `<a href="/?page=${nextPage}&per_page=${perPage}" class="pagination-btn">Next →</a>`
+          ? `<a href="/?page=${nextPage}&per_page=${perPage}${domainParam}" class="pagination-btn">Next →</a>`
           : '<span class="pagination-btn disabled">Next →</span>'
       }
     </div>
@@ -88,6 +110,41 @@ export function renderGalleryPage(data: GalleryPageData): string {
     header p {
       font-size: 12px;
       color: #666;
+      margin-bottom: 12px;
+    }
+
+    .domain-filter {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .domain-filter label {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .domain-filter select {
+      padding: 6px 10px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      background: white;
+      min-width: 200px;
+    }
+
+    .domain-filter select:hover {
+      border-color: #0066cc;
+    }
+
+    .domain-filter select:focus {
+      outline: none;
+      border-color: #0066cc;
+      box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.1);
+    }
     }
 
     main {
@@ -207,11 +264,21 @@ export function renderGalleryPage(data: GalleryPageData): string {
       font-size: 11px;
     }
   </style>
+  <script>
+    function handleDomainChange(domain) {
+      if (domain === '') {
+        window.location.href = '/?page=1&per_page=12';
+      } else {
+        window.location.href = '/?domain=' + encodeURIComponent(domain) + '&page=1&per_page=12';
+      }
+    }
+  </script>
 </head>
 <body>
   <header>
     <h1>📸 WSC Gallery</h1>
     <p>Web Screen Capture</p>
+    ${domainFilterHtml}
   </header>
 
   <main>

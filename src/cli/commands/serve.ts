@@ -54,12 +54,27 @@ export function createRequestHandler(
 
     try {
       if (req.method === 'GET' && url.pathname === '/') {
-        // Gallery page with pagination
+        // Gallery page with pagination and domain filtering
         const page = Math.max(1, parseInt(url.searchParams.get('page') ?? '1', 10));
         const perPage = Math.min(100, Math.max(1, parseInt(url.searchParams.get('per_page') ?? '12', 10)));
+        const selectedDomain = url.searchParams.get('domain') ?? undefined;
 
         const allCaptures = await storage.listCaptures();
-        const sortedCaptures = allCaptures.slice().reverse(); // Newest first
+        let filteredCaptures = allCaptures.slice();
+
+        // Filter by domain if specified
+        if (selectedDomain) {
+          filteredCaptures = filteredCaptures.filter((capture) => {
+            try {
+              const captureUrl = new URL(capture.url);
+              return captureUrl.hostname === selectedDomain;
+            } catch {
+              return false;
+            }
+          });
+        }
+
+        const sortedCaptures = filteredCaptures.slice().reverse(); // Newest first
         const totalCaptures = sortedCaptures.length;
 
         const startIdx = (page - 1) * perPage;
@@ -71,6 +86,8 @@ export function createRequestHandler(
           currentPage: page,
           perPage,
           totalCaptures,
+          allCaptures: allCaptures.slice().reverse(),
+          selectedDomain,
         });
 
         res.writeHead(200, {
