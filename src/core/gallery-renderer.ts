@@ -76,24 +76,64 @@ export function renderGalleryPage(data: GalleryPageData): string {
     header {
       background: white;
       border-bottom: 1px solid #ddd;
-      padding: 20px;
+      padding: 12px 20px;
       text-align: center;
     }
 
     header h1 {
-      font-size: 28px;
-      margin-bottom: 8px;
+      font-size: 20px;
+      margin-bottom: 2px;
     }
 
     header p {
-      font-size: 14px;
+      font-size: 12px;
       color: #666;
     }
 
     main {
       max-width: 1400px;
       margin: 0 auto;
-      padding: 40px 20px;
+      padding: 20px;
+    }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 12px 16px;
+      background: white;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      margin-bottom: 24px;
+    }
+
+    .pagination-btn {
+      padding: 6px 12px;
+      background: #0066cc;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .pagination-btn:hover {
+      background: #0052a3;
+    }
+
+    .pagination-btn.disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      color: #999;
+    }
+
+    .pagination-info {
+      font-size: 13px;
+      color: #666;
+      min-width: 250px;
+      text-align: center;
     }
 
     .gallery {
@@ -160,62 +200,23 @@ export function renderGalleryPage(data: GalleryPageData): string {
       margin-top: 4px;
     }
 
-    .pagination {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-      padding: 20px;
-      background: white;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-    }
-
-    .pagination-btn {
-      padding: 8px 16px;
-      background: #0066cc;
-      color: white;
-      text-decoration: none;
-      border-radius: 4px;
-      font-size: 14px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .pagination-btn:hover {
-      background: #0052a3;
-    }
-
-    .pagination-btn.disabled {
-      background: #ccc;
-      cursor: not-allowed;
-      color: #999;
-    }
-
-    .pagination-info {
-      font-size: 14px;
-      color: #666;
-      min-width: 250px;
-      text-align: center;
-    }
-
     footer {
       text-align: center;
-      padding: 20px;
+      padding: 12px 20px;
       color: #999;
-      font-size: 12px;
+      font-size: 11px;
     }
   </style>
 </head>
 <body>
   <header>
     <h1>📸 WSC Gallery</h1>
-    <p>Web Screen Capture - Image Gallery</p>
+    <p>Web Screen Capture</p>
   </header>
 
   <main>
-    ${totalCaptures > 0 ? `<div class="gallery">\n${captureItems}\n    </div>` : '<p style="text-align: center; color: #999;">No captures yet.</p>'}
     ${pagination}
+    ${totalCaptures > 0 ? `<div class="gallery">\n${captureItems}\n    </div>` : '<p style="text-align: center; color: #999;">No captures yet.</p>'}
   </main>
 
   <footer>

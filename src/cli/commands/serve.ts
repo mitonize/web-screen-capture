@@ -284,6 +284,12 @@ export function makeServeCommand(): Command {
       const storage = createStorage(opts.storageDir);
       await storage.init();
 
+      // Cleanup orphaned metadata and images on startup
+      const cleaned = await storage.cleanupOrphanedMetadata();
+      if (cleaned.length > 0) {
+        printSuccess(`→ Cleaned up ${cleaned.length} orphaned image(s)`);
+      }
+
       const server = http.createServer(createRequestHandler(storage));
 
       server.listen(port, host, () => {
