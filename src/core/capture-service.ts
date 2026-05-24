@@ -95,7 +95,7 @@ export class CaptureService {
             );
 
             const imagePath = await this.storage.saveImage(
-              { captureId: id, url: input.url, capturedAt },
+              { captureId: id, url: input.url, capturedAt, deviceType: input.deviceType },
               imageData,
               format,
             );

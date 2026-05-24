@@ -33,7 +33,7 @@ function formatLocalTimestamp(isoTimestamp: string): string {
     date.getFullYear(),
     pad(date.getMonth() + 1),
     pad(date.getDate()),
-  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
+  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
   beforeEach(async () => {
@@ -49,7 +49,12 @@ function formatLocalTimestamp(isoTimestamp: string): string {
 
   async function setupCapture(id = captureId) {
     const imagePath = await storage.saveImage(
-      { captureId: id, url: 'https://example.com', capturedAt: '2026-05-20T10:30:00.000Z' },
+      {
+        captureId: id,
+        url: 'https://example.com',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+        randomPart: 'abc12345',
+      },
       MOCK_PNG,
       'png',
     );
@@ -154,7 +159,7 @@ function formatLocalTimestamp(isoTimestamp: string): string {
 
     const content = await fs.readFile(path.join(exportDir, 'export.json'), 'utf-8');
     const parsed = JSON.parse(content) as { captures: Array<{ image_path: string }> };
-    expect(parsed.captures[0]?.image_path).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.png`);
+    expect(parsed.captures[0]?.image_path).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}_example_abc12345_pc.png`);
   });
 
   it('exports multiple captures', async () => {

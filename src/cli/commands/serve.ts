@@ -125,7 +125,7 @@ export function createRequestHandler(
           label?: string;
           captures?: Array<{
             deviceType: string;
-            imageData: string; // base64-encoded PNG
+            imageData: string; // base64-encoded JPEG
             width: number;
             height: number;
           }>;
@@ -162,9 +162,9 @@ export function createRequestHandler(
           try {
             const imageBuffer = Buffer.from(cap.imageData, 'base64');
             const imagePath = await storage.saveImage(
-              { captureId: id, url: parsed.url, capturedAt },
+              { captureId: id, url: parsed.url, capturedAt, deviceType },
               imageBuffer,
-              'png',
+              'jpeg',
             );
 
             const capture: Capture = {
@@ -173,7 +173,7 @@ export function createRequestHandler(
               captured_at: capturedAt,
               label: parsed.label ?? null,
               image_path: imagePath,
-              image_format: 'png',
+              image_format: 'jpeg',
               status: 'success',
               error: null,
               viewport_width: cap.width,

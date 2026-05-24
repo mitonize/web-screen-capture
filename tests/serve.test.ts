@@ -139,6 +139,10 @@ describe('wsc serve HTTP handler', () => {
 
     const saved = await storage.listCaptures();
     expect(saved).toHaveLength(2);
+    expect(saved.map((c) => c.device_type).sort()).toEqual(['mobile', 'pc']);
+    expect(new Set(saved.map((c) => c.image_path)).size).toBe(2);
+    expect(saved.find((c) => c.device_type === 'pc')?.image_path).toContain('_pc.jpg');
+    expect(saved.find((c) => c.device_type === 'mobile')?.image_path).toContain('_mobile.jpg');
   });
 
   it('persists correct metadata for browser-extension capture', async () => {

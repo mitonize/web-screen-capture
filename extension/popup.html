@@ -69,6 +69,26 @@
     #label:focus { border-color: #89dceb; }
     #label::placeholder { color: #585b70; }
 
+    .device-options {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .device-option {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #a6adc8;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .device-option input {
+      accent-color: #89dceb;
+    }
+
     #capture-btn {
       width: 100%;
       padding: 9px;
@@ -183,7 +203,12 @@
 
     <input type="text" id="label" placeholder="ラベル（任意）" maxlength="80">
 
-    <button id="capture-btn" disabled>PC・モバイル 両方キャプチャ</button>
+    <div class="device-options" aria-label="対象デバイス">
+      <label class="device-option"><input type="checkbox" id="device-pc" checked> PC</label>
+      <label class="device-option"><input type="checkbox" id="device-mobile" checked> モバイル</label>
+    </div>
+
+    <button id="capture-btn" disabled>選択デバイスをキャプチャ</button>
 
     <div id="progress"><div id="progress-bar"></div></div>
     <div id="status"></div>

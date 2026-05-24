@@ -7,6 +7,13 @@ import { printSuccess, printError, printJson } from '../output.js';
 import type { CaptureInput } from '../../core/capture-service.js';
 import type { DeviceType } from '../../models/capture.js';
 
+function normalizeImageFormat(format: string): 'jpeg' | 'png' {
+  if (format === 'jpg' || format === 'jpeg') {
+    return 'jpeg';
+  }
+  return 'png';
+}
+
 export function makeCaptureCommand(): Command {
   const cmd = new Command('capture');
   cmd
@@ -18,7 +25,7 @@ export function makeCaptureCommand(): Command {
     .option('--viewport-width <n>', 'Viewport width (overrides device preset)')
     .option('--viewport-height <n>', 'Viewport height (overrides device preset)')
     .option('--no-full-page', 'Disable full-page capture')
-    .option('--format <format>', 'Image format: jpeg, png (default: jpeg)', 'jpeg')
+    .option('--format <format>', 'Image format: jpg, png (default: jpg)', 'jpg')
     .option('--quality <n>', 'JPEG quality 1-100 (default: 80)', '80')
     .option('--timeout <ms>', 'Timeout per page in milliseconds', '10000')
     .option('--retries <n>', 'Retry attempts per URL', '3')
@@ -85,8 +92,8 @@ export function makeCaptureCommand(): Command {
       }
 
       // Validate format
-      if (opts.format !== 'jpeg' && opts.format !== 'png') {
-        printError(`Invalid format: "${opts.format}". Use "jpeg" or "png".`);
+      if (opts.format !== 'jpg' && opts.format !== 'jpeg' && opts.format !== 'png') {
+        printError(`Invalid format: "${opts.format}". Use "jpg", "jpeg", or "png".`);
         process.exit(2);
       }
 
@@ -101,7 +108,7 @@ export function makeCaptureCommand(): Command {
         fullPage: opts.fullPage,
         timeoutMs: parseInt(opts.timeout, 10) || captureConfig.timeout_ms,
         devices: validDevices,
-        format: opts.format as 'jpeg' | 'png',
+        format: normalizeImageFormat(opts.format),
         quality: parseInt(opts.quality, 10) || 80,
       });
 

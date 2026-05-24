@@ -9,7 +9,7 @@
  *   2. PC: オートスクロール → fixed要素変換 → フルページキャプチャ（再ナビゲーションなし）
  *   3. Mobile: デバイスエミュレーション適用 → オートスクロール → fixed要素変換 → キャプチャ → 復元
  *   4. デバッガを切断
- *   5. base64 PNG を wsc サーバーの /capture-image へ POST
+ *   5. base64 JPEG を wsc サーバーの /capture-image へ POST
  */
 
 const WSC_SERVER = 'http://127.0.0.1:4242';
@@ -66,6 +66,21 @@ function sleep(ms) {
  * フルページ画像内で正しい位置に一度だけ現れる。
  */
 async function preparePageForCapture(target, viewportHeight) {
+  // Step 0: restore any elements converted in a previous capture pass so that
+  // scrollHeight is measured against the natural page layout.
+  // (PC capture converts fixed→absolute; without this, the subsequent mobile
+  //  capture would measure an inflated scrollHeight, producing a too-tall image.)
+  await dbgSend(target, 'Runtime.evaluate', {
+    expression: `
+      (function() {
+        for (const el of document.querySelectorAll('[data-wsc-orig-pos]')) {
+          el.style.setProperty('position', el.getAttribute('data-wsc-orig-pos'), 'important');
+          el.removeAttribute('data-wsc-orig-pos');
+        }
+      })()
+    `,
+  });
+
   // Record the initial page height BEFORE scrolling.
   // Pages with infinite scroll or dynamic content injection will grow as we
   // scroll; we cap scrolling and the final clip to this pre-scroll height so
@@ -108,14 +123,17 @@ async function preparePageForCapture(target, viewportHeight) {
 
   // Step 5: convert fixed→absolute and sticky→relative so headers/footers
   // appear only once at their natural position in the full-page screenshot.
+  // Tag each converted element so Step 0 can restore it in the next pass.
   await dbgSend(target, 'Runtime.evaluate', {
     expression: `
       (function() {
         for (const el of document.querySelectorAll('*')) {
           const pos = getComputedStyle(el).position;
           if (pos === 'fixed') {
+            el.setAttribute('data-wsc-orig-pos', 'fixed');
             el.style.setProperty('position', 'absolute', 'important');
           } else if (pos === 'sticky') {
+            el.setAttribute('data-wsc-orig-pos', 'sticky');
             el.style.setProperty('position', 'relative', 'important');
           }
         }
@@ -138,11 +156,12 @@ async function captureFullPage(target, viewportHeight) {
   // Use pre-scroll height to exclude dynamically added content.
   const height  = clipHeight ?? Math.ceil(metrics.cssContentSize.height);
 
-  const result = await dbgSend(target, 'Page.captureScreenshot', {
-    format: 'png',
-    captureBeyondViewport: true,
-    clip: { x: 0, y: 0, width, height, scale: 1 },
-  });
+    const result = await dbgSend(target, 'Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: 80,
+      captureBeyondViewport: true,
+      clip: { x: 0, y: 0, width, height, scale: 1 },
+    });
 
   return { imageData: result.data, width, height };
 }
@@ -170,47 +189,60 @@ async function captureMobilePage(target) {
   });
   await sleep(200); // let layout settle after viewport resize
 
-  const result = await dbgSend(target, 'Page.captureScreenshot', {
-    format: 'png',
-    captureBeyondViewport: false,
-    clip: { x: 0, y: 0, width: mobileWidth, height: pageHeight, scale: 1 },
-  });
+    const result = await dbgSend(target, 'Page.captureScreenshot', {
+      format: 'jpeg',
+      quality: 80,
+      captureBeyondViewport: false,
+      clip: { x: 0, y: 0, width: mobileWidth, height: pageHeight, scale: 1 },
+    });
 
   return { imageData: result.data, width: mobileWidth, height: pageHeight };
 }
 
+function normalizeDevices(devices) {
+  const selected = Array.isArray(devices)
+    ? devices.filter((device) => device === 'pc' || device === 'mobile')
+    : [];
+  return selected.length > 0 ? selected : ['pc', 'mobile'];
+}
+
 // ── Main capture handler ──────────────────────────────────────────────────────
 
-async function handleCapture({ tabId, url, label }) {
+async function handleCapture({ tabId, url, label, devices }) {
   const target = { tabId };
+  const selectedDevices = normalizeDevices(devices);
+  const results = [];
+  let attached = false;
 
   try {
     await dbgAttach(target);
+    attached = true;
 
-    // ---- PC: scroll to trigger lazy load, then capture ----
-    const pc = await captureFullPage(target, 720);
+    if (selectedDevices.includes('pc')) {
+      // ---- PC: scroll to trigger lazy load, then capture ----
+      const pc = await captureFullPage(target, 720);
+      results.push({ deviceType: 'pc', imageData: pc.imageData, width: pc.width, height: pc.height });
+    }
 
-    // ---- Mobile: emulate → measure full page height → expand viewport → capture → restore ----
-    await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
-    await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
-    await sleep(700); // wait for responsive layout to reflow
+    if (selectedDevices.includes('mobile')) {
+      // ---- Mobile: emulate → measure full page height → expand viewport → capture → restore ----
+      await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
+      await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
+      await sleep(700); // wait for responsive layout to reflow
 
-    const mobile = await captureMobilePage(target);
+      const mobile = await captureMobilePage(target);
+      results.push({ deviceType: 'mobile', imageData: mobile.imageData, width: mobile.width, height: mobile.height });
 
-    // Restore original viewport and user-agent
-    await dbgSend(target, 'Emulation.clearDeviceMetricsOverride', {});
-    await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: '' });
-
-    await dbgDetach(target);
+      // Restore original viewport and user-agent
+      await dbgSend(target, 'Emulation.clearDeviceMetricsOverride', {});
+      await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: '' });
+    }
 
     // ---- Send pre-captured images to wsc server ----
     const body = JSON.stringify({
       url,
       label: label || undefined,
-      captures: [
-        { deviceType: 'pc',     imageData: pc.imageData,     width: pc.width,     height: pc.height },
-        { deviceType: 'mobile', imageData: mobile.imageData, width: mobile.width, height: mobile.height },
-      ],
+      captures: results,
     });
 
     const res = await fetch(`${WSC_SERVER}/capture-image`, {
@@ -228,8 +260,11 @@ async function handleCapture({ tabId, url, label }) {
     return { success: true, results: data.results };
 
   } catch (err) {
-    await dbgDetach(target).catch(() => {});
     return { success: false, error: err.message };
+  } finally {
+    if (attached) {
+      await dbgDetach(target).catch(() => {});
+    }
   }
 }
 
@@ -243,4 +278,3 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true; // keep message channel open for async response
   }
 });
-

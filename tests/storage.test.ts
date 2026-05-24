@@ -24,7 +24,7 @@ function makeCapture(overrides: Partial<{
   const id = overrides.id ?? '550e8400-e29b-41d4-a716-446655440001';
   const url = overrides.url ?? 'https://example.com';
   const capturedAt = '2026-05-20T10:30:00.000Z';
-  const imagePath = `images/${buildImageFilename({ captureId: id, url, capturedAt })}`;
+  const imagePath = `images/${buildImageFilename({ captureId: id, url, capturedAt, randomPart: 'abc12345' })}`;
 
   return {
     id,
@@ -50,7 +50,7 @@ function formatLocalTimestamp(isoTimestamp: string): string {
     date.getFullYear(),
     pad(date.getMonth() + 1),
     pad(date.getDate()),
-  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
+  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
 }
 
 describe('FilesystemStorage', () => {
@@ -216,10 +216,11 @@ describe('FilesystemStorage', () => {
         captureId,
         url: 'https://example.com',
         capturedAt: '2026-05-20T10:30:00.000Z',
+        randomPart: 'abc12345',
       },
       MINIMAL_PNG,
     );
-    expect(imagePath).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.jpg`);
+    expect(imagePath).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}_example_abc12345_pc.jpg`);
 
     await storage.saveCapture({
       ...makeCapture({ id: captureId }),
@@ -231,12 +232,13 @@ describe('FilesystemStorage', () => {
     expect(read?.compare(MINIMAL_PNG)).toBe(0);
   });
 
-  it('reuses the same domain hash for URLs on the same host', () => {
+  it('builds readable filenames from registered domains', () => {
     const first = buildImageFilename(
       {
         captureId: '550e8400-e29b-41d4-a716-446655440001',
         url: 'https://example.com/a',
         capturedAt: '2026-05-20T10:30:00.000Z',
+        randomPart: 'abc12345',
       },
       'png',
     );
@@ -245,12 +247,30 @@ describe('FilesystemStorage', () => {
         captureId: '550e8400-e29b-41d4-a716-446655440002',
         url: 'https://example.com/b',
         capturedAt: '2026-05-20T10:30:00.000Z',
+        deviceType: 'mobile',
+        randomPart: 'def67890',
       },
       'png',
     );
 
-    expect(first).toBe(second);
-    expect(first).toBe(`${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.png`);
+    expect(first).not.toBe(second);
+    expect(first).toBe(`${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}_example_abc12345_pc.png`);
+    expect(second).toBe(`${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}_example_def67890_mobile.png`);
+  });
+
+  it('derives a readable abbreviation from registered domains', () => {
+    const filename = buildImageFilename(
+      {
+        captureId: '550e8400-e29b-41d4-a716-446655440003',
+        url: 'https://sub.example.co.jp/path',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+        randomPart: 'z9y8x7w6',
+      },
+      'png',
+    );
+
+    expect(filename).toContain('_example_');
+    expect(filename).toBe(`${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}_example_z9y8x7w6_pc.png`);
   });
 
   it('returns null for non-existent image', async () => {

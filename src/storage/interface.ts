@@ -1,4 +1,5 @@
 import type { Capture } from '../models/capture.js';
+import type { DeviceType } from '../models/capture.js';
 import type { Comment } from '../models/comment.js';
 import type { Annotation } from '../models/annotation.js';
 
@@ -6,6 +7,7 @@ export interface ImageSaveInput {
   captureId: string;
   url: string;
   capturedAt: string;
+  deviceType?: DeviceType;
 }
 
 export interface StorageBackend {
