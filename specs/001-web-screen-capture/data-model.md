@@ -23,12 +23,16 @@ Capture (1) ──< Comment (*)
 ```typescript
 import { z } from 'zod';
 
+export const ImageFormatSchema = z.enum(['jpeg', 'png']);
+export type ImageFormat = z.infer<typeof ImageFormatSchema>;
+
 export const CaptureSchema = z.object({
   id: z.string().uuid(),
   url: z.string().url(),
   captured_at: z.string().datetime(),
   label: z.string().nullable().default(null),
   image_path: z.string(),          // .wsc/ からの相対パス
+  image_format: ImageFormatSchema.default('jpeg'),
   status: z.enum(['success', 'failure']),
   error: z.string().nullable().default(null),
   viewport_width: z.number().int().positive().default(1280),
@@ -53,6 +57,7 @@ export const CapturesFileSchema = z.object({
 | `captured_at` | ISO 8601 文字列 | ✅ | 実行時刻 | datetime 形式 |
 | `label` | 文字列 \| null | — | null | — |
 | `image_path` | 文字列 | ✅ | 自動設定 | — |
+| `image_format` | `"jpeg"` \| `"png"` | ✅ | `jpeg` | enum |
 | `status` | `"success"` \| `"failure"` | ✅ | — | enum |
 | `error` | 文字列 \| null | — | null | — |
 | `viewport_width` | 正の整数 | ✅ | 1280 | > 0 |
@@ -227,7 +232,7 @@ const ConfigSchema = z.object({
   author: z.string().optional(),
   storage_backend: z.enum(['filesystem']).default('filesystem'),
   capture: z.object({
-    timeout_ms: z.number().int().positive().default(30000),
+    timeout_ms: z.number().int().positive().default(10000),
     retries: z.number().int().nonnegative().default(3),
     viewport_width: z.number().int().positive().default(1280),
     viewport_height: z.number().int().positive().default(720),
@@ -245,7 +250,7 @@ const ConfigSchema = z.object({
 | `.wsc/captures.json` | キャプチャメタデータ配列 | `CapturesFileSchema` |
 | `.wsc/comments.json` | コメントデータ配列 | `CommentsFileSchema` |
 | `.wsc/annotations.json` | アノテーションデータ配列 | `AnnotationsFileSchema` |
-| `.wsc/images/<id>.png` | キャプチャ画像 | バイナリ PNG |
+| `.wsc/images/<timestamp>-<domain-hash>.jpg` / `.png` | キャプチャ画像 | バイナリ JPEG / PNG |
 
 ---
 
@@ -259,6 +264,7 @@ const ConfigSchema = z.object({
 │  captured_at                        │
 │  label                              │
 │  image_path                         │
+│  image_format                       │
 │  status                             │
 │  error                              │
 │  viewport_width, viewport_height    │

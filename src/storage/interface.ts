@@ -2,6 +2,12 @@ import type { Capture } from '../models/capture.js';
 import type { Comment } from '../models/comment.js';
 import type { Annotation } from '../models/annotation.js';
 
+export interface ImageSaveInput {
+  captureId: string;
+  url: string;
+  capturedAt: string;
+}
+
 export interface StorageBackend {
   init(): Promise<void>;
 
@@ -21,6 +27,10 @@ export interface StorageBackend {
   deleteCapture(id: string): Promise<boolean>;
   cleanupOrphanedMetadata(): Promise<string[]>;
 
-  saveImage(captureId: string, data: Buffer): Promise<string>;
+  saveImage(
+    capture: ImageSaveInput,
+    data: Buffer,
+    format?: 'jpeg' | 'png',
+  ): Promise<string>;
   readImage(captureId: string): Promise<Buffer | null>;
 }

@@ -46,7 +46,7 @@ export function makeViewCommand(): Command {
       }
 
       for (const capture of matches) {
-        // image_path is stored as relative "images/<id>.png"; resolve from storage dir
+        // image_path is stored as a relative path under the storage dir; resolve it here
         const storageDir = opts.storageDir ?? path.join(process.cwd(), '.wsc');
         const absPath = path.isAbsolute(capture.image_path)
           ? capture.image_path

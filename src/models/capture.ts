@@ -3,6 +3,9 @@ import { z } from 'zod';
 export const DeviceTypeSchema = z.enum(['pc', 'mobile']);
 export type DeviceType = z.infer<typeof DeviceTypeSchema>;
 
+export const ImageFormatSchema = z.enum(['jpeg', 'png']);
+export type ImageFormat = z.infer<typeof ImageFormatSchema>;
+
 export const DEVICE_PRESETS: Record<DeviceType, { width: number; height: number; userAgent: string }> = {
   pc: {
     width: 1280,
@@ -23,6 +26,7 @@ export const CaptureSchema = z.object({
   captured_at: z.string().datetime(),
   label: z.string().nullable().default(null),
   image_path: z.string(),
+  image_format: ImageFormatSchema.default('jpeg'),
   status: z.enum(['success', 'failure']),
   error: z.string().nullable().default(null),
   viewport_width: z.number().int().positive().default(1280),

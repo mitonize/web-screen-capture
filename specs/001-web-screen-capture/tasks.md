@@ -39,7 +39,7 @@
 - [x] T008 [P] `src/models/comment.ts` を作成する（`CommentSchema`・`CommentsFileSchema` Zod スキーマ、`Comment`・`CommentThread` 型エクスポート、`parent_id` による自己参照スレッド構造）
 - [x] T009 [P] `src/models/annotation.ts` を作成する（`RectAnnotationSchema`・`ArrowAnnotationSchema`・`TextAnnotationSchema`・`HighlightAnnotationSchema` を `discriminatedUnion` で合成した `AnnotationSchema`、`AnnotationsFileSchema`、`Annotation` 型エクスポート）
 - [x] T010 `src/storage/interface.ts` を作成する（`StorageBackend` 抽象インターフェース: `saveCapture`, `listCaptures`, `findCapture`, `saveComment`, `listComments`, `findComment`, `saveAnnotation`, `listAnnotations`, `findAnnotation`, `deleteAnnotation`, `saveImage`, `readImage`, `init` メソッドを型定義）
-- [x] T011 `src/storage/filesystem.ts` を作成する（`StorageBackend` を実装するクラス: `.wsc/` ディレクトリ管理, アトミック書き込み（tmp → rename）, `captures.json`・`comments.json`・`annotations.json` の読み書き, `images/<id>.png` の保存・読み込み）
+- [x] T011 `src/storage/filesystem.ts` を作成する（`StorageBackend` を実装するクラス: `.wsc/` ディレクトリ管理, アトミック書き込み（tmp → rename）, `captures.json`・`comments.json`・`annotations.json` の読み書き, `images/<timestamp>-<domain-hash>.png` の保存・読み込み）
 - [x] T012 `src/storage/index.ts` を作成する（ストレージファクトリー: `config.storage_backend` に応じて `FilesystemStorage` を選択して返すファクトリー関数 `createStorage(config)` を実装）
 - [x] T013 `src/core/config.ts` を作成する（`ConfigSchema` Zod スキーマ定義、`.wsc/config.json` の読み込み・パース・デフォルト値適用、`loadConfig()` 関数をエクスポート）
 - [x] T014 `src/core/author-resolver.ts` を作成する（著者識別子の優先順位解決: `--author` CLI フラグ > `WSC_AUTHOR` 環境変数 > `.wsc/config.json` の `author` 値、未設定時はエラーメッセージと設定方法を返す `resolveAuthor(cliValue?: string, config?: Config): string` 関数）
@@ -143,7 +143,7 @@
 
 ### 実装（US5）
 
-- [x] T033 [US5] `src/cli/commands/export.ts` を作成する（`wsc export` コマンド定義: `--output <dir>` オプション（デフォルト: `./wsc-export-<ISO8601タイムスタンプ>`）, `--json` オプション, `storage.listCaptures()` で全キャプチャ取得, 各キャプチャに対して `storage.listComments(id)` と `storage.listAnnotations(id)` を取得して埋め込み, `storage.readImage(id)` で PNG を `<output>/images/<id>.png` にコピー, `export.json` 生成（`exported_at`, `version: 1`, 画像パスは相対パス `images/<id>.png`）, 書き込み失敗時の終了コード 1, 完了メッセージ（件数サマリー）と `--json` 出力）
+- [x] T033 [US5] `src/cli/commands/export.ts` を作成する（`wsc export` コマンド定義: `--output <dir>` オプション（デフォルト: `./wsc-export-<ISO8601タイムスタンプ>`）, `--json` オプション, `storage.listCaptures()` で全キャプチャ取得, 各キャプチャに対して `storage.listComments(id)` と `storage.listAnnotations(id)` を取得して埋め込み, `storage.readImage(id)` で PNG を `<output>/images/<timestamp>-<domain-hash>.png` にコピー, `export.json` 生成（`exported_at`, `version: 1`, 画像パスは相対パス `images/<timestamp>-<domain-hash>.png`）, 書き込み失敗時の終了コード 1, 完了メッセージ（件数サマリー）と `--json` 出力）
 
 **チェックポイント**: この時点で全ユーザーストーリー（US1〜US5）が独立して機能すること
 

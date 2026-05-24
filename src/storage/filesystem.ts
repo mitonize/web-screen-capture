@@ -1,13 +1,14 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { v4 as uuidv4 } from 'uuid';
-import type { StorageBackend } from './interface.js';
+import type { StorageBackend, ImageSaveInput } from './interface.js';
 import type { Capture, CapturesFile } from '../models/capture.js';
 import type { Comment, CommentsFile } from '../models/comment.js';
 import type { Annotation, AnnotationsFile } from '../models/annotation.js';
-import { CapturesFileSchema } from '../models/capture.js';
+import { CapturesFileSchema, CaptureSchema } from '../models/capture.js';
 import { CommentsFileSchema } from '../models/comment.js';
 import { AnnotationsFileSchema } from '../models/annotation.js';
+import { buildImageFilename } from './filename.js';
 
 async function atomicWrite(filePath: string, data: string): Promise<void> {
   const tmp = `${filePath}.${uuidv4()}.tmp`;
@@ -98,7 +99,20 @@ export class FilesystemStorage implements StorageBackend {
 
   private async readCapturesFile(): Promise<CapturesFile> {
     const raw = await fs.readFile(this.capturesPath(), 'utf-8');
-    return CapturesFileSchema.parse(JSON.parse(raw));
+    const parsed = JSON.parse(raw) as unknown;
+    const result = CapturesFileSchema.safeParse(parsed);
+    if (result.success) return result.data;
+
+    // Recover: filter out individual invalid captures and continue
+    const raw2 = parsed as { version?: unknown; captures?: unknown[] };
+    const validCaptures = (raw2.captures ?? []).filter((c) => {
+      return CaptureSchema.safeParse(c).success;
+    });
+    const recovered = CapturesFileSchema.parse({ version: 1, captures: validCaptures });
+
+    // Persist the cleaned file so next run starts clean
+    await this.writeCapturesFile(recovered);
+    return recovered;
   }
 
   private async writeCapturesFile(data: CapturesFile): Promise<void> {
@@ -205,9 +219,11 @@ export class FilesystemStorage implements StorageBackend {
 
   async deleteCapture(id: string): Promise<boolean> {
     let removed = false;
+    let removedImagePath: string | null = null;
 
     await this.capturesMutex.run(async () => {
       const file = await this.readCapturesFile();
+      removedImagePath = file.captures.find((c) => c.id === id)?.image_path ?? null;
       const before = file.captures.length;
       file.captures = file.captures.filter((c) => c.id !== id);
       if (file.captures.length < before) {
@@ -230,10 +246,20 @@ export class FilesystemStorage implements StorageBackend {
       await this.writeAnnotationsFile(file);
     });
 
-    try {
-      await fs.unlink(path.join(this.imagesDir, `${id}.png`));
-    } catch {
-      // image may already be gone – that's fine
+    const pathsToRemove = new Set<string>();
+    if (removedImagePath) {
+      pathsToRemove.add(path.join(this.baseDir, removedImagePath));
+    }
+    for (const ext of ['jpg', 'png']) {
+      pathsToRemove.add(path.join(this.imagesDir, `${id}.${ext}`));
+    }
+
+    for (const filePath of pathsToRemove) {
+      try {
+        await fs.unlink(filePath);
+      } catch {
+        // image may already be gone – that's fine
+      }
     }
 
     return true;
@@ -244,7 +270,7 @@ export class FilesystemStorage implements StorageBackend {
     const removed: string[] = [];
 
     for (const capture of captures) {
-      const imagePath = path.join(this.imagesDir, `${capture.id}.png`);
+      const imagePath = path.join(this.baseDir, capture.image_path);
       const exists = await fs.access(imagePath).then(() => true).catch(() => false);
       if (!exists) {
         await this.deleteCapture(capture.id);
@@ -255,19 +281,35 @@ export class FilesystemStorage implements StorageBackend {
     return removed;
   }
 
-  async saveImage(captureId: string, data: Buffer): Promise<string> {
-    const filename = `${captureId}.png`;
+  async saveImage(
+    capture: ImageSaveInput,
+    data: Buffer,
+    format: 'jpeg' | 'png' = 'jpeg',
+  ): Promise<string> {
+    const filename = buildImageFilename(capture, format);
     const fullPath = path.join(this.imagesDir, filename);
     await fs.writeFile(fullPath, data);
     return `images/${filename}`;
   }
 
   async readImage(captureId: string): Promise<Buffer | null> {
-    const fullPath = path.join(this.imagesDir, `${captureId}.png`);
-    try {
-      return await fs.readFile(fullPath);
-    } catch {
-      return null;
+    const capture = await this.findCapture(captureId);
+    if (capture) {
+      try {
+        return await fs.readFile(path.join(this.baseDir, capture.image_path));
+      } catch {
+        // fall through to legacy filename lookup
+      }
     }
+
+    for (const ext of ['jpg', 'png']) {
+      const fullPath = path.join(this.imagesDir, `${captureId}.${ext}`);
+      try {
+        return await fs.readFile(fullPath);
+      } catch {
+        // try next extension
+      }
+    }
+    return null;
   }
 }

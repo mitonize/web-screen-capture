@@ -161,7 +161,11 @@ export function createRequestHandler(
           const id = uuidv4();
           try {
             const imageBuffer = Buffer.from(cap.imageData, 'base64');
-            const imagePath = await storage.saveImage(id, imageBuffer);
+            const imagePath = await storage.saveImage(
+              { captureId: id, url: parsed.url, capturedAt },
+              imageBuffer,
+              'png',
+            );
 
             const capture: Capture = {
               id,
@@ -169,6 +173,7 @@ export function createRequestHandler(
               captured_at: capturedAt,
               label: parsed.label ?? null,
               image_path: imagePath,
+              image_format: 'png',
               status: 'success',
               error: null,
               viewport_width: cap.width,
@@ -238,4 +243,3 @@ export function makeServeCommand(): Command {
 
   return cmd;
 }
-

@@ -9,13 +9,8 @@ export interface ScreenshotOptions {
   fullPage?: boolean;
   timeoutMs?: number;
   deviceType?: DeviceType;
-  /**
-   * Scroll from top to bottom in viewport-height steps before capturing.
-   * Triggers IntersectionObserver-based lazy loading so content is fully
-   * rendered instead of being blank or repeated.
-   * Default: true
-   */
-  scrollBeforeCapture?: boolean;
+  format?: 'jpeg' | 'png';
+  quality?: number;
 }
 
 export async function launchBrowser(): Promise<Browser> {
@@ -64,15 +59,21 @@ async function cdpFullPageScreenshot(
   page: Page,
   viewportWidth: number,
   clipHeight?: number,
+  format: 'jpeg' | 'png' = 'jpeg',
+  quality?: number,
 ): Promise<Buffer> {
   const fullHeight = clipHeight ?? await page.evaluate(() => document.documentElement.scrollHeight);
   const cdp: CDPSession = await page.context().newCDPSession(page);
   try {
-    const result = await cdp.send('Page.captureScreenshot', {
-      format: 'png',
+    const params: Record<string, unknown> = {
+      format,
       clip: { x: 0, y: 0, width: viewportWidth, height: fullHeight, scale: 1 },
       captureBeyondViewport: true,
-    });
+    };
+    if (format === 'jpeg') {
+      params.quality = quality ?? 80;
+    }
+    const result = await cdp.send('Page.captureScreenshot', params);
     return Buffer.from(result.data as string, 'base64');
   } finally {
     await cdp.detach().catch(() => undefined);
@@ -91,8 +92,9 @@ export async function captureScreenshot(
     viewportWidth = preset.width,
     viewportHeight = preset.height,
     fullPage = true,
-    timeoutMs = 30000,
-    scrollBeforeCapture = true,
+    timeoutMs = 10000,
+    format = 'jpeg',
+    quality,
   } = options;
 
   const contextOptions: Parameters<Browser['newContext']>[0] = {
@@ -113,12 +115,17 @@ export async function captureScreenshot(
     page.setDefaultTimeout(timeoutMs);
     await page.goto(url, { waitUntil: 'networkidle', timeout: timeoutMs });
 
-    if (fullPage && scrollBeforeCapture) {
+    if (fullPage) {
       const initialHeight = await scrollPage(page, viewportHeight, timeoutMs);
-      return await cdpFullPageScreenshot(page, viewportWidth, initialHeight);
+      return await cdpFullPageScreenshot(page, viewportWidth, initialHeight, format, quality);
     }
 
-    return await page.screenshot({ fullPage });
+    const screenshotOpts: Parameters<Page['screenshot']>[0] = { fullPage };
+    if (format === 'jpeg') {
+      screenshotOpts.type = 'jpeg';
+      screenshotOpts.quality = quality ?? 80;
+    }
+    return await page.screenshot(screenshotOpts);
   } finally {
     if (page) await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);

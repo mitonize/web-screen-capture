@@ -6,7 +6,7 @@ export const ConfigSchema = z.object({
   storage_backend: z.enum(['filesystem']).default('filesystem'),
   capture: z
     .object({
-      timeout_ms: z.number().int().positive().default(30000),
+      timeout_ms: z.number().int().positive().default(3000),
       retries: z.number().int().nonnegative().default(3),
       viewport_width: z.number().int().positive().default(1280),
       viewport_height: z.number().int().positive().default(720),

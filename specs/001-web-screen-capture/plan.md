@@ -213,7 +213,7 @@ vitest.config.ts
 ### 6. エクスポート形式
 
 ベストプラクティス調査結果:
-- エクスポート出力: `export/captures.json` + `export/images/<id>.png`
+- エクスポート出力: `export/captures.json` + `export/images/<timestamp>-<domain-hash>.png`
 - 画像パスは相対パスで記録（エクスポート先ディレクトリから相対）
 - `captures.json` にコメント・アノテーションを埋め込む構造（自己完結型）
 

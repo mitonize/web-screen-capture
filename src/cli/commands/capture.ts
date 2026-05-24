@@ -18,8 +18,9 @@ export function makeCaptureCommand(): Command {
     .option('--viewport-width <n>', 'Viewport width (overrides device preset)')
     .option('--viewport-height <n>', 'Viewport height (overrides device preset)')
     .option('--no-full-page', 'Disable full-page capture')
-    .option('--no-scroll', 'Skip scroll-before-capture (disables lazy-load triggering; useful if repeated content appears at the bottom)')
-    .option('--timeout <ms>', 'Timeout per page in milliseconds', '30000')
+    .option('--format <format>', 'Image format: jpeg, png (default: jpeg)', 'jpeg')
+    .option('--quality <n>', 'JPEG quality 1-100 (default: 80)', '80')
+    .option('--timeout <ms>', 'Timeout per page in milliseconds', '10000')
     .option('--retries <n>', 'Retry attempts per URL', '3')
     .option('--concurrency <n>', 'Max concurrent captures', '5')
     .option('--json', 'Output results as JSON')
@@ -32,7 +33,8 @@ export function makeCaptureCommand(): Command {
       viewportWidth?: string;
       viewportHeight?: string;
       fullPage: boolean;
-      scroll: boolean;
+      format: string;
+      quality: string;
       timeout: string;
       retries: string;
       concurrency: string;
@@ -82,6 +84,12 @@ export function makeCaptureCommand(): Command {
         validDevices.push(d as DeviceType);
       }
 
+      // Validate format
+      if (opts.format !== 'jpeg' && opts.format !== 'png') {
+        printError(`Invalid format: "${opts.format}". Use "jpeg" or "png".`);
+        process.exit(2);
+      }
+
       const captureConfig = config.capture;
       const service = new CaptureService(storage);
 
@@ -91,9 +99,10 @@ export function makeCaptureCommand(): Command {
         viewportWidth: opts.viewportWidth ? parseInt(opts.viewportWidth, 10) : undefined,
         viewportHeight: opts.viewportHeight ? parseInt(opts.viewportHeight, 10) : undefined,
         fullPage: opts.fullPage,
-        scrollBeforeCapture: opts.scroll,
         timeoutMs: parseInt(opts.timeout, 10) || captureConfig.timeout_ms,
         devices: validDevices,
+        format: opts.format as 'jpeg' | 'png',
+        quality: parseInt(opts.quality, 10) || 80,
       });
 
       const failures = results.filter((r) => !r.success);

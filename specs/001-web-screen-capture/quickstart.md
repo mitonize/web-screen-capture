@@ -58,6 +58,9 @@ wsc comment add <id> --author alice --message "..."
 # 単一URL
 wsc capture https://example.com
 
+# JPEGのまま明示したい場合
+wsc capture https://example.com --format jpeg --quality 80
+
 # 複数URL（スペース区切り）
 wsc capture https://example.com https://example.org --label "競合調査 2026-05-20"
 
@@ -69,7 +72,7 @@ https://example.net" > urls.txt
 wsc capture --url-file urls.txt --label "リグレッションチェック"
 
 # JSON出力でスクリプト処理
-wsc capture https://example.com --json | jq '.results[0].capture_id'
+wsc capture https://example.com --json | jq '.[0].id'
 ```
 
 ### 2. キャプチャ一覧を確認
@@ -82,7 +85,7 @@ wsc list
 wsc show 550e8400-e29b-41d4-a716-446655440000
 
 # JSON出力
-wsc list --json | jq '.captures[] | .url'
+wsc list --json | jq '.[].url'
 ```
 
 ### 3. コメントを追加
@@ -165,7 +168,7 @@ cat ./team-review-export/export.json | jq '.captures[0].annotations'
     wsc capture \
       --url-file test/urls.txt \
       --label "PR #${{ github.event.pull_request.number }}" \
-      --timeout 60000 \
+      --timeout 10000 \
       --json > capture-results.json
     
     # 失敗件数を確認
@@ -188,7 +191,7 @@ cat ./team-review-export/export.json | jq '.captures[0].annotations'
     ├── comments.json      # コメントデータ
     ├── annotations.json   # アノテーションデータ
     └── images/
-        └── <capture-id>.png
+        └── <capture-id>.(jpg|png)
 ```
 
 `.wsc/` ディレクトリはチームで共有するか（ネットワーク共有上）、個人ローカルに保持するかはチームの方針によります。

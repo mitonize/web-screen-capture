@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
+import { ZodError } from 'zod';
 import { makeCaptureCommand } from './commands/capture.js';
 import { makeListCommand } from './commands/list.js';
 import { makeShowCommand } from './commands/show.js';
@@ -28,6 +29,12 @@ program.addCommand(makeViewCommand());
 program.addCommand(makeCleanupCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {
-  process.stderr.write(`Fatal error: ${String(err)}\n`);
+  if (err instanceof ZodError) {
+    process.stderr.write(`Error: data validation failed – captures.json may be corrupted.\n`);
+    process.stderr.write(`Run \`wsc cleanup\` to remove orphaned entries.\n`);
+  } else {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`Fatal error: ${msg}\n`);
+  }
   process.exit(2);
 });

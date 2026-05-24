@@ -5,6 +5,14 @@ import fs from 'node:fs/promises';
 import { FilesystemStorage } from '../src/storage/filesystem.js';
 import type { Annotation } from '../src/models/annotation.js';
 
+const MOCK_PNG = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+  0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,
+  0xde,
+]);
+
 const captureId = '550e8400-e29b-41d4-a716-446655440000';
 
 function makeAnnotation(overrides: Partial<Annotation> & { type: Annotation['type'] }): Annotation {
@@ -66,12 +74,21 @@ describe('Annotation storage', () => {
     storage = new FilesystemStorage(tmpDir);
     await storage.init();
 
+    const imagePath = await storage.saveImage(
+      {
+        captureId,
+        url: 'https://example.com',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+      },
+      MOCK_PNG,
+    );
+
     await storage.saveCapture({
       id: captureId,
       url: 'https://example.com',
       captured_at: '2026-05-20T10:30:00.000Z',
       label: 'Test',
-      image_path: `images/${captureId}.png`,
+      image_path: imagePath,
       status: 'success',
       error: null,
       viewport_width: 1280,
@@ -142,8 +159,26 @@ describe('Annotation storage', () => {
   });
 
   it('deleting annotation does not modify any image files', async () => {
-    const MOCK_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-    await storage.saveImage(captureId, MOCK_PNG);
+    const imagePath = await storage.saveImage(
+      {
+        captureId,
+        url: 'https://example.com',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+      },
+      MOCK_PNG,
+    );
+    await storage.saveCapture({
+      id: captureId,
+      url: 'https://example.com',
+      captured_at: '2026-05-20T10:30:00.000Z',
+      label: 'Test',
+      image_path: imagePath,
+      status: 'success',
+      error: null,
+      viewport_width: 1280,
+      viewport_height: 720,
+      full_page: true,
+    });
 
     const ann = makeAnnotation({ type: 'rect' });
     await storage.saveAnnotation(ann);

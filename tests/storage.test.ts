@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import { FilesystemStorage } from '../src/storage/filesystem.js';
+import { buildImageFilename } from '../src/storage/filename.js';
 
 // minimal valid 1×1 PNG bytes
 const MINIMAL_PNG = Buffer.from([
@@ -20,12 +21,18 @@ const MINIMAL_PNG = Buffer.from([
 function makeCapture(overrides: Partial<{
   id: string; url: string; status: 'success' | 'failure';
 }> = {}) {
+  const id = overrides.id ?? '550e8400-e29b-41d4-a716-446655440001';
+  const url = overrides.url ?? 'https://example.com';
+  const capturedAt = '2026-05-20T10:30:00.000Z';
+  const imagePath = `images/${buildImageFilename({ captureId: id, url, capturedAt })}`;
+
   return {
-    id: overrides.id ?? '550e8400-e29b-41d4-a716-446655440001',
-    url: overrides.url ?? 'https://example.com',
-    captured_at: '2026-05-20T10:30:00.000Z',
+    id,
+    url,
+    captured_at: capturedAt,
     label: null,
-    image_path: `images/${overrides.id ?? '550e8400-e29b-41d4-a716-446655440001'}.png`,
+    image_path: imagePath,
+    image_format: 'jpeg' as const,
     status: overrides.status ?? 'success' as const,
     error: null,
     viewport_width: 1280,
@@ -33,6 +40,17 @@ function makeCapture(overrides: Partial<{
     full_page: true,
     device_type: 'pc' as const,
   };
+}
+
+function formatLocalTimestamp(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp);
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0');
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
 }
 
 describe('FilesystemStorage', () => {
@@ -193,12 +211,46 @@ describe('FilesystemStorage', () => {
 
   it('saves and reads image', async () => {
     const captureId = '550e8400-e29b-41d4-a716-446655440001';
-    const imagePath = await storage.saveImage(captureId, MINIMAL_PNG);
-    expect(imagePath).toBe(`images/${captureId}.png`);
+    const imagePath = await storage.saveImage(
+      {
+        captureId,
+        url: 'https://example.com',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+      },
+      MINIMAL_PNG,
+    );
+    expect(imagePath).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.jpg`);
+
+    await storage.saveCapture({
+      ...makeCapture({ id: captureId }),
+      image_path: imagePath,
+    });
 
     const read = await storage.readImage(captureId);
     expect(read).not.toBeNull();
     expect(read?.compare(MINIMAL_PNG)).toBe(0);
+  });
+
+  it('reuses the same domain hash for URLs on the same host', () => {
+    const first = buildImageFilename(
+      {
+        captureId: '550e8400-e29b-41d4-a716-446655440001',
+        url: 'https://example.com/a',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+      },
+      'png',
+    );
+    const second = buildImageFilename(
+      {
+        captureId: '550e8400-e29b-41d4-a716-446655440002',
+        url: 'https://example.com/b',
+        capturedAt: '2026-05-20T10:30:00.000Z',
+      },
+      'png',
+    );
+
+    expect(first).toBe(second);
+    expect(first).toBe(`${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.png`);
   });
 
   it('returns null for non-existent image', async () => {
@@ -208,12 +260,16 @@ describe('FilesystemStorage', () => {
 
   describe('deleteCapture', () => {
     it('removes capture, related comments, annotations, and image', async () => {
-      const cap = makeCapture();
-      await storage.saveCapture(cap);
-      await storage.saveImage(cap.id, MINIMAL_PNG);
+    const cap = makeCapture();
+    await storage.saveCapture(cap);
+    const imagePath = await storage.saveImage(
+      { captureId: cap.id, url: cap.url, capturedAt: cap.captured_at },
+      MINIMAL_PNG,
+    );
+    await storage.saveCapture({ ...cap, image_path: imagePath });
 
-      const comment = {
-        id: '550e8400-e29b-41d4-a716-446655440010',
+    const comment = {
+      id: '550e8400-e29b-41d4-a716-446655440010',
         capture_id: cap.id,
         parent_id: null,
         author: 'Alice',
@@ -250,11 +306,18 @@ describe('FilesystemStorage', () => {
   describe('cleanupOrphanedMetadata', () => {
     it('removes captures whose image files are missing', async () => {
       const cap1 = makeCapture({ id: '550e8400-e29b-41d4-a716-446655440001' });
-      const cap2 = makeCapture({ id: '550e8400-e29b-41d4-a716-446655440002' });
+      const cap2 = makeCapture({
+        id: '550e8400-e29b-41d4-a716-446655440002',
+        url: 'https://example.org',
+      });
       await storage.saveCapture(cap1);
       await storage.saveCapture(cap2);
       // only save image for cap1
-      await storage.saveImage(cap1.id, MINIMAL_PNG);
+      const imagePath = await storage.saveImage(
+        { captureId: cap1.id, url: cap1.url, capturedAt: cap1.captured_at },
+        MINIMAL_PNG,
+      );
+      await storage.saveCapture({ ...cap1, image_path: imagePath });
 
       const removed = await storage.cleanupOrphanedMetadata();
       expect(removed).toEqual([cap2.id]);
@@ -266,7 +329,11 @@ describe('FilesystemStorage', () => {
     it('returns empty array when all images are present', async () => {
       const cap = makeCapture();
       await storage.saveCapture(cap);
-      await storage.saveImage(cap.id, MINIMAL_PNG);
+      const imagePath = await storage.saveImage(
+        { captureId: cap.id, url: cap.url, capturedAt: cap.captured_at },
+        MINIMAL_PNG,
+      );
+      await storage.saveCapture({ ...cap, image_path: imagePath });
 
       const removed = await storage.cleanupOrphanedMetadata();
       expect(removed).toHaveLength(0);

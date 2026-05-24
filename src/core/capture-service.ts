@@ -54,9 +54,10 @@ export class CaptureService {
       concurrency = 5,
       retries = 3,
       fullPage = true,
-      scrollBeforeCapture = true,
-      timeoutMs = 30000,
+      timeoutMs = 10000,
       devices = ['pc'],
+      format = 'jpeg',
+      quality,
     } = options;
 
     // Expand inputs by device: each URL × each device
@@ -85,14 +86,19 @@ export class CaptureService {
                   viewportWidth: vw,
                   viewportHeight: vh,
                   fullPage,
-                  scrollBeforeCapture,
                   timeoutMs,
                   deviceType: input.deviceType,
+                  format,
+                  quality,
                 }),
               retries,
             );
 
-            const imagePath = await this.storage.saveImage(id, imageData);
+            const imagePath = await this.storage.saveImage(
+              { captureId: id, url: input.url, capturedAt },
+              imageData,
+              format,
+            );
 
             const capture: Capture = {
               id,
@@ -100,6 +106,7 @@ export class CaptureService {
               captured_at: capturedAt,
               label: input.label ?? null,
               image_path: imagePath,
+              image_format: format,
               status: 'success',
               error: null,
               viewport_width: vw,
@@ -119,7 +126,8 @@ export class CaptureService {
               url: input.url,
               captured_at: capturedAt,
               label: input.label ?? null,
-              image_path: `images/${id}.png`,
+              image_path: '',
+              image_format: format,
               status: 'failure',
               error: errorMsg,
               viewport_width: vw,

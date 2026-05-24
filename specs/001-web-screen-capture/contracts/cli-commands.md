@@ -32,10 +32,12 @@ wsc capture <url> [<url>...] [options]
   <url>...            キャプチャ対象URL（1件以上）
 
 オプション:
-  --url-file <file>   URLリストファイル（1行1URL）。<url> と組み合わせ可。
-  --label <label>     このバッチの全URLに適用するラベル
-  --timeout <ms>      1ページあたりのタイムアウト（ms）[デフォルト: config値 or 30000]
-  --retries <n>       リトライ回数 [デフォルト: config値 or 3]
+   --url-file <file>   URLリストファイル（1行1URL）。<url> と組み合わせ可。
+   --label <label>     このバッチの全URLに適用するラベル
+   --format <type>     画像形式: jpeg | png [デフォルト: jpeg]
+   --quality <n>       JPEG品質 1-100 [デフォルト: 80]
+   --timeout <ms>      1ページあたりのタイムアウト（ms）[デフォルト: config値 or 10000]
+   --retries <n>       リトライ回数 [デフォルト: config値 or 3]
   --author <name>     著者識別子
   --json              JSON形式で出力
 
@@ -45,14 +47,14 @@ wsc capture <url> [<url>...] [options]
   2   URL指定なし、--url-file が読めない、著者未設定
 
 人間可読出力例（成功）:
-  ✓ https://example.com → .wsc/images/550e8400-....png
-  ✓ https://example.org → .wsc/images/7c9e6679-....png
+  ✓ https://example.com → .wsc/images/550e8400-....jpg
+  ✓ https://example.org → .wsc/images/7c9e6679-....jpg
   
   2/2 キャプチャ完了
 
 人間可読出力例（部分失敗）:
-  ✓ https://example.com → .wsc/images/550e8400-....png
-  ✗ https://unreachable.example → タイムアウトエラー (30000ms)
+  ✓ https://example.com → .wsc/images/550e8400-....jpg
+  ✗ https://unreachable.example → タイムアウトエラー (10000ms)
     対処方法: --timeout オプションで時間を延ばすか、URLが正しいか確認してください。
   
   1/2 キャプチャ完了（1件失敗）
@@ -65,6 +67,7 @@ JSON出力スキーマ:
       "status": "success" | "failure",
       "capture_id": "string (UUID, success時のみ)",
       "image_path": "string (success時のみ)",
+      "image_format": "jpeg" | "png (success時のみ)",
       "captured_at": "string (ISO 8601, success時のみ)",
       "label": "string | null",
       "error": "string (failure時のみ)"
@@ -110,6 +113,7 @@ JSON出力スキーマ:
       "url": "string",
       "captured_at": "string (ISO 8601)",
       "label": "string | null",
+      "image_format": "jpeg" | "png",
       "status": "success" | "failure",
       "image_path": "string",
       "comment_count": number,
@@ -145,7 +149,7 @@ wsc show <capture-id> [options]
   URL:        https://example.com
   日時:        2026-05-20 10:30:00
   ラベル:      トップページ確認
-  画像:        .wsc/images/550e8400-....png
+  画像:        .wsc/images/550e8400-....jpg
   ビューポート: 1280x720（フルページ）
   コメント:    2件
   アノテーション: 1件
@@ -157,6 +161,7 @@ JSON出力スキーマ:
   "captured_at": "string",
   "label": "string | null",
   "image_path": "string",
+  "image_format": "jpeg" | "png",
   "status": "success" | "failure",
   "viewport_width": number,
   "viewport_height": number,
@@ -413,7 +418,7 @@ wsc export [options]
   <output>/
   ├── export.json
   └── images/
-      └── <capture-id>.png
+      └── <capture-id>.(jpg|png)
 
 人間可読出力例:
   エクスポート完了: ./wsc-export-2026-05-20T120000Z/
@@ -441,8 +446,9 @@ export.json の構造:
       "url": "string",
       "captured_at": "string",
       "label": "string | null",
+      "image_format": "jpeg" | "png",
       "status": "success" | "failure",
-      "image_path": "images/<capture-id>.png",
+      "image_path": "images/<capture-id>.(jpg|png)",
       "viewport_width": number,
       "viewport_height": number,
       "full_page": boolean,

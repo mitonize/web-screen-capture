@@ -23,7 +23,18 @@ describe('Export command integration', () => {
   let storage: FilesystemStorage;
   let exportDir: string;
 
-  const captureId = '550e8400-e29b-41d4-a716-446655440000';
+const captureId = '550e8400-e29b-41d4-a716-446655440000';
+
+function formatLocalTimestamp(isoTimestamp: string): string {
+  const date = new Date(isoTimestamp);
+  const pad = (value: number, length = 2) => String(value).padStart(length, '0');
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+  ].join('') + `-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}-${pad(date.getMilliseconds(), 3)}`;
+}
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'wsc-export-test-'));
@@ -37,19 +48,24 @@ describe('Export command integration', () => {
   });
 
   async function setupCapture(id = captureId) {
+    const imagePath = await storage.saveImage(
+      { captureId: id, url: 'https://example.com', capturedAt: '2026-05-20T10:30:00.000Z' },
+      MOCK_PNG,
+      'png',
+    );
+
     await storage.saveCapture({
       id,
       url: 'https://example.com',
       captured_at: '2026-05-20T10:30:00.000Z',
       label: 'Test capture',
-      image_path: `images/${id}.png`,
+      image_path: imagePath,
       status: 'success',
       error: null,
       viewport_width: 1280,
       viewport_height: 720,
       full_page: true,
     });
-    await storage.saveImage(id, MOCK_PNG);
   }
 
   it('exports captures to output directory', async () => {
@@ -59,23 +75,23 @@ describe('Export command integration', () => {
     const imagesDir = path.join(exportDir, 'images');
     await fs.mkdir(imagesDir, { recursive: true });
 
-    for (const capture of captures) {
-      const comments = await storage.listComments(capture.id);
-      const annotations = await storage.listAnnotations(capture.id);
-      const imageData = await storage.readImage(capture.id);
-      if (imageData) {
-        await fs.writeFile(path.join(imagesDir, `${capture.id}.png`), imageData);
-      }
-      const exportData = {
-        version: 1,
-        exported_at: new Date().toISOString(),
-        captures: [{
-          ...capture,
-          image_path: `images/${capture.id}.png`,
-          comments,
-          annotations,
-        }],
-      };
+      for (const capture of captures) {
+        const comments = await storage.listComments(capture.id);
+        const annotations = await storage.listAnnotations(capture.id);
+        const imageData = await storage.readImage(capture.id);
+        if (imageData) {
+          await fs.writeFile(path.join(imagesDir, path.basename(capture.image_path)), imageData);
+        }
+        const exportData = {
+          version: 1,
+          exported_at: new Date().toISOString(),
+          captures: [{
+            ...capture,
+            image_path: capture.image_path,
+            comments,
+            annotations,
+          }],
+        };
       await fs.writeFile(
         path.join(exportDir, 'export.json'),
         JSON.stringify(exportData, null, 2),
@@ -99,11 +115,11 @@ describe('Export command integration', () => {
     for (const capture of captures) {
       const imageData = await storage.readImage(capture.id);
       if (imageData) {
-        await fs.writeFile(path.join(imagesDir, `${capture.id}.png`), imageData);
+        await fs.writeFile(path.join(imagesDir, path.basename(capture.image_path)), imageData);
       }
     }
 
-    const imagePath = path.join(imagesDir, `${captureId}.png`);
+    const imagePath = path.join(imagesDir, path.basename(captures[0]!.image_path));
     await expect(fs.access(imagePath)).resolves.toBeUndefined();
   });
 
@@ -121,7 +137,7 @@ describe('Export command integration', () => {
 
     const exportCaptures = captures.map((c) => ({
       ...c,
-      image_path: `images/${c.id}.png`,
+      image_path: c.image_path,
       comments: [],
       annotations: [],
     }));
@@ -138,7 +154,7 @@ describe('Export command integration', () => {
 
     const content = await fs.readFile(path.join(exportDir, 'export.json'), 'utf-8');
     const parsed = JSON.parse(content) as { captures: Array<{ image_path: string }> };
-    expect(parsed.captures[0]?.image_path).toBe(`images/${captureId}.png`);
+    expect(parsed.captures[0]?.image_path).toBe(`images/${formatLocalTimestamp('2026-05-20T10:30:00.000Z')}-a379a6f6ee.png`);
   });
 
   it('exports multiple captures', async () => {

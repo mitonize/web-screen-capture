@@ -20,6 +20,7 @@ interface ExportCapture {
   viewport_width: number;
   viewport_height: number;
   full_page: boolean;
+  image_format: string;
   image_path: string;
   comments: unknown[];
   annotations: unknown[];
@@ -75,11 +76,12 @@ export function makeExportCommand(): Command {
         const comments = await storage.listComments(capture.id);
         const annotations = await storage.listAnnotations(capture.id);
 
-        let relImagePath = `images/${capture.id}.png`;
+        const ext = capture.image_format === 'png' ? 'png' : 'jpg';
+        const relImagePath = capture.image_path;
 
         const imageData = await storage.readImage(capture.id);
         if (imageData) {
-          const destPath = path.join(imagesDir, `${capture.id}.png`);
+          const destPath = path.join(imagesDir, path.basename(relImagePath));
           await fs.writeFile(destPath, imageData);
         }
 
@@ -93,6 +95,7 @@ export function makeExportCommand(): Command {
           viewport_width: capture.viewport_width,
           viewport_height: capture.viewport_height,
           full_page: capture.full_page,
+          image_format: capture.image_format,
           image_path: relImagePath,
           comments,
           annotations,
