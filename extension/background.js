@@ -128,18 +128,14 @@ async function preparePageForCapture(target, viewportHeight) {
 
 // ── Full-page screenshot (no navigation) ─────────────────────────────────────
 
-async function captureFullPage(target, viewportHeight, noScroll = false) {
-  let clipHeight;
-
-  if (!noScroll) {
-    // preparePageForCapture returns the pre-scroll height; use that as clip
-    // so dynamically appended content (infinite scroll, recommendations) is excluded.
-    clipHeight = await preparePageForCapture(target, viewportHeight);
-  }
+async function captureFullPage(target, viewportHeight) {
+  // preparePageForCapture returns the pre-scroll height; use that as clip
+  // so dynamically appended content (infinite scroll, recommendations) is excluded.
+  const clipHeight = await preparePageForCapture(target, viewportHeight);
 
   const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
   const width   = Math.ceil(metrics.cssContentSize.width);
-  // Use pre-scroll height when available to exclude dynamically added content.
+  // Use pre-scroll height to exclude dynamically added content.
   const height  = clipHeight ?? Math.ceil(metrics.cssContentSize.height);
 
   const result = await dbgSend(target, 'Page.captureScreenshot', {
@@ -157,14 +153,11 @@ async function captureFullPage(target, viewportHeight, noScroll = false) {
 // full page height so the entire content fits in one viewport, then capture
 // without captureBeyondViewport.
 
-async function captureMobilePage(target, noScroll = false) {
+async function captureMobilePage(target) {
   const { width: mobileWidth } = MOBILE_METRICS;
 
   // Scroll to trigger lazy load and convert fixed/sticky elements
-  let clipHeight;
-  if (!noScroll) {
-    clipHeight = await preparePageForCapture(target, MOBILE_METRICS.height);
-  }
+  const clipHeight = await preparePageForCapture(target, MOBILE_METRICS.height);
 
   const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
   const pageHeight = clipHeight ?? Math.ceil(metrics.cssContentSize.height);
@@ -188,21 +181,21 @@ async function captureMobilePage(target, noScroll = false) {
 
 // ── Main capture handler ──────────────────────────────────────────────────────
 
-async function handleCapture({ tabId, url, label, noScroll = false }) {
+async function handleCapture({ tabId, url, label }) {
   const target = { tabId };
 
   try {
     await dbgAttach(target);
 
     // ---- PC: scroll to trigger lazy load, then capture ----
-    const pc = await captureFullPage(target, 720, noScroll);
+    const pc = await captureFullPage(target, 720);
 
     // ---- Mobile: emulate → measure full page height → expand viewport → capture → restore ----
     await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
     await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
     await sleep(700); // wait for responsive layout to reflow
 
-    const mobile = await captureMobilePage(target, noScroll);
+    const mobile = await captureMobilePage(target);
 
     // Restore original viewport and user-agent
     await dbgSend(target, 'Emulation.clearDeviceMetricsOverride', {});

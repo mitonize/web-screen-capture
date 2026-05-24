@@ -3,7 +3,6 @@ const WSC_SERVER = 'http://127.0.0.1:4242';
 const badge    = document.getElementById('server-badge');
 const urlBox   = document.getElementById('url-box');
 const labelEl  = document.getElementById('label');
-const noScrollEl = document.getElementById('no-scroll');
 const captureBtn = document.getElementById('capture-btn');
 const statusEl = document.getElementById('status');
 const progress = document.getElementById('progress');
@@ -85,14 +84,13 @@ function renderRecent(captures) {
 
 captureBtn.addEventListener('click', async () => {
   const label = labelEl.value.trim() || undefined;
-  const noScroll = noScrollEl.checked;
 
   captureBtn.disabled = true;
   setStatus('キャプチャ中... (PC)', 'loading');
   setProgress(10);
 
   chrome.runtime.sendMessage(
-    { type: 'CAPTURE', tabId: currentTabId, url: currentTabUrl, label, noScroll },
+    { type: 'CAPTURE', tabId: currentTabId, url: currentTabUrl, label },
     (response) => {
       setProgress(null);
 
