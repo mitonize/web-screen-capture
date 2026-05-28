@@ -359,7 +359,20 @@ export function makeServeCommand(): Command {
 
       process.on('SIGINT', () => {
         printSuccess('\nShutting down...');
-        server.close(() => process.exit(0));
+        
+        // Close the server with a timeout to force exit if necessary
+        const shutdownTimeout = setTimeout(() => {
+          printSuccess('Force closing server...');
+          process.exit(0);
+        }, 5000); // 5 second timeout
+        
+        server.close(() => {
+          clearTimeout(shutdownTimeout);
+          process.exit(0);
+        });
+        
+        // Destroy all active sockets if server.close() doesn't complete
+        server.closeAllConnections?.();
       });
     });
 
