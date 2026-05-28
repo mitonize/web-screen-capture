@@ -1,4 +1,5 @@
 const WSC_SERVER = 'http://127.0.0.1:4242';
+const GALLERY_URL = 'http://127.0.0.1:4242/';
 
 const badge    = document.getElementById('server-badge');
 const urlBox   = document.getElementById('url-box');
@@ -9,7 +10,7 @@ const captureBtn = document.getElementById('capture-btn');
 const statusEl = document.getElementById('status');
 const progress = document.getElementById('progress');
 const progressBar = document.getElementById('progress-bar');
-const capturesList = document.getElementById('captures-list');
+const galleryLink = document.getElementById('gallery-link');
 
 let currentTabId  = null;
 let currentTabUrl = '';
@@ -52,13 +53,6 @@ function updateCaptureButton() {
   captureBtn.disabled = !serverReady || devices.length === 0;
 }
 
-function formatTime(iso) {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch { return ''; }
-}
-
 // ── Server status ───────────────────────────────────────────────────────────
 
 async function checkServer() {
@@ -80,31 +74,27 @@ async function checkServer() {
   return false;
 }
 
-// ── Recent captures ─────────────────────────────────────────────────────────
+// ── Device state persistence ───────────────────────────────────────────────
 
-async function loadRecent() {
-  try {
-    const res = await fetch(`${WSC_SERVER}/captures`, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return;
-    const { captures } = await res.json();
-    renderRecent(captures ?? []);
-  } catch {
-    capturesList.innerHTML = '<li><span id="empty-msg">サーバーに接続できません</span></li>';
-  }
+async function saveDeviceState() {
+  const state = {
+    pc: devicePcEl.checked,
+    mobile: deviceMobileEl.checked,
+  };
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ deviceState: state }, resolve);
+  });
 }
 
-function renderRecent(captures) {
-  if (!captures.length) {
-    capturesList.innerHTML = '<li><span id="empty-msg">まだキャプチャがありません</span></li>';
-    return;
-  }
-  capturesList.innerHTML = captures.slice(0, 10).map((c) => `
-    <li>
-      <span class="device-badge ${c.device_type}">${c.device_type === 'mobile' ? '📱' : '🖥️'} ${c.device_type}</span>
-      <span class="cap-url" title="${c.url}">${c.url}</span>
-      <span class="cap-time">${formatTime(c.captured_at)}</span>
-    </li>
-  `).join('');
+async function loadDeviceState() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['deviceState'], (result) => {
+      const state = result.deviceState || { pc: true, mobile: true };
+      devicePcEl.checked = state.pc;
+      deviceMobileEl.checked = state.mobile;
+      resolve(state);
+    });
+  });
 }
 
 // ── Capture ──────────────────────────────────────────────────────────────────
@@ -144,7 +134,6 @@ captureBtn.addEventListener('click', async () => {
       const total = response.results.length;
       setStatus(`✓ ${ok}/${total} 件保存完了`, 'success');
       labelEl.value = '';
-      loadRecent();
       updateCaptureButton();
     },
   );
@@ -159,9 +148,17 @@ captureBtn.addEventListener('click', async () => {
 
 });
 
+// ── Gallery link ───────────────────────────────────────────────────────────
+
+galleryLink.addEventListener('click', (e) => {
+  e.preventDefault();
+  chrome.tabs.create({ url: GALLERY_URL });
+});
+
 // ── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
+  console.log('[wsc popup] Initializing...');
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   currentTabId  = tab?.id ?? null;
   currentTabUrl = tab?.url ?? '';
@@ -169,14 +166,24 @@ async function init() {
   urlBox.textContent = currentTabUrl || '(URLを取得できません)';
   urlBox.title       = currentTabUrl;
 
-  devicePcEl.addEventListener('change', updateCaptureButton);
-  deviceMobileEl.addEventListener('change', updateCaptureButton);
+  // Load device state
+  console.log('[wsc popup] Loading device state...');
+  await loadDeviceState();
+
+  // Save state on device change
+  devicePcEl.addEventListener('change', () => {
+    updateCaptureButton();
+    saveDeviceState();
+  });
+  deviceMobileEl.addEventListener('change', () => {
+    updateCaptureButton();
+    saveDeviceState();
+  });
   updateCaptureButton();
 
+  console.log('[wsc popup] Checking server...');
   const serverOk = await checkServer();
-  if (serverOk) {
-    await loadRecent();
-  }
+  console.log('[wsc popup] Server check result:', serverOk);
 }
 
 init();

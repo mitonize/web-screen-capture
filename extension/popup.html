@@ -132,70 +132,31 @@
       border-radius: 2px;
     }
 
-    .divider {
-      border: none;
-      border-top: 1px solid #313244;
-      margin: 12px 0;
-    }
-
-    #recent-section h2 {
+    #gallery-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: transparent;
+      border: 1px solid #313244;
+      color: #89dceb;
       font-size: 11px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #585b70;
-      margin-bottom: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s;
     }
-
-    #captures-list {
-      list-style: none;
-    }
-
-    #captures-list li {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 0;
-      border-bottom: 1px solid #181825;
-      font-size: 12px;
-    }
-
-    .device-badge {
-      font-size: 10px;
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-weight: 600;
-      flex-shrink: 0;
-    }
-    .device-badge.pc     { background: #313244; color: #cba6f7; }
-    .device-badge.mobile { background: #313244; color: #89dceb; }
-
-    .cap-url {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: #bac2de;
-    }
-
-    .cap-time {
-      font-size: 10px;
-      color: #585b70;
-      flex-shrink: 0;
-    }
-
-    #empty-msg {
-      font-size: 12px;
-      color: #585b70;
-      text-align: center;
-      padding: 8px 0;
-    }
+    #gallery-link:hover { background: #313244; border-color: #89dceb; }
   </style>
 </head>
 <body>
   <header>
     <h1>📸 wsc</h1>
-    <span id="server-badge">確認中...</span>
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <a id="gallery-link" href="#" target="_blank">🖼️ ギャラリー</a>
+      <span id="server-badge">確認中...</span>
+    </div>
   </header>
 
   <main>
@@ -212,15 +173,6 @@
 
     <div id="progress"><div id="progress-bar"></div></div>
     <div id="status"></div>
-
-    <hr class="divider">
-
-    <section id="recent-section">
-      <h2>最近のキャプチャ</h2>
-      <ul id="captures-list">
-        <li><span id="empty-msg">読み込み中...</span></li>
-      </ul>
-    </section>
   </main>
 
   <script src="popup.js"></script>
