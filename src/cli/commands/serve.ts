@@ -278,6 +278,35 @@ export function createRequestHandler(
         return;
       }
 
+      // DELETE /captures/:id - delete a capture
+      const deleteMatch = url.pathname.match(/^\/captures\/([a-f0-9\-]+)$/);
+      if (req.method === 'DELETE' && deleteMatch) {
+        const captureId = deleteMatch[1];
+        const capture = await storage.findCapture(captureId);
+
+        if (!capture) {
+          sendJson(res, 404, { error: `Capture not found: ${captureId}` });
+          return;
+        }
+
+        const deleted = await storage.deleteCapture(captureId);
+
+        if (!deleted) {
+          sendJson(res, 500, { error: `Failed to delete capture: ${captureId}` });
+          return;
+        }
+
+        printSuccess(`→ Deleted capture: ${capture.url}`);
+        sendJson(res, 200, {
+          deleted: true,
+          id: captureId,
+          url: capture.url,
+          label: capture.label,
+          message: `Capture deleted: ${capture.url}`,
+        });
+        return;
+      }
+
       sendJson(res, 404, { error: 'Not found' });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -323,6 +352,7 @@ export function makeServeCommand(): Command {
         printSuccess(`                          body: { "url": "...", "label": "...", "devices": ["pc","mobile"] }`);
         printSuccess(`  POST /capture-image   — save pre-captured images (browser extension)`);
         printSuccess(`                          body: { "url": "...", "captures": [{ "deviceType", "imageData", "width", "height" }] }`);
+        printSuccess(`  DELETE /captures/:id  — delete a capture and its metadata`);
         printSuccess('');
         printSuccess('Press Ctrl+C to stop.');
       });

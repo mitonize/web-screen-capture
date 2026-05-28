@@ -3,6 +3,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs/promises';
+import { v4 as uuidv4 } from 'uuid';
 import { FilesystemStorage } from '../src/storage/filesystem.js';
 import { createRequestHandler } from '../src/cli/commands/serve.js';
 
@@ -358,5 +359,91 @@ describe('wsc serve HTTP handler', () => {
   it('GET /images/:id returns 404 for non-existent image', async () => {
     const { status } = await request(server, 'GET', '/images/00000000-0000-0000-0000-000000000000');
     expect(status).toBe(404);
+  });
+
+  // ── DELETE /captures/:id ───────────────────────────────────────────────────
+
+  it('DELETE /captures/:id deletes a capture', async () => {
+    // Create a capture
+    const { data: createData } = await request(server, 'POST', '/capture-image', {
+      url: 'https://example.com',
+      captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+    });
+
+    const id = ((createData as { results: Array<{ id: string }> }).results)[0]!.id;
+
+    // Verify it exists
+    const beforeList = await request(server, 'GET', '/captures');
+    expect(((beforeList.data as { captures: Array<{ id: string }> }).captures).length).toBeGreaterThan(0);
+
+    // Delete it
+    const { status, data: deleteData } = await request(server, 'DELETE', `/captures/${id}`);
+    expect(status).toBe(200);
+    expect((deleteData as { deleted: boolean }).deleted).toBe(true);
+    expect((deleteData as { id: string }).id).toBe(id);
+
+    // Verify it's gone
+    const afterList = await request(server, 'GET', '/captures');
+    const afterCaptures = ((afterList.data as { captures: Array<{ id: string }> }).captures);
+    expect(afterCaptures.find((c) => c.id === id)).toBeUndefined();
+  });
+
+  it('DELETE /captures/:id returns 404 for non-existent capture', async () => {
+    const { status, data } = await request(server, 'DELETE', '/captures/00000000-0000-0000-0000-000000000000');
+    expect(status).toBe(404);
+    expect((data as { error: string }).error).toContain('not found');
+  });
+
+  it('DELETE /captures/:id also deletes associated comments and annotations', async () => {
+    // Create a capture
+    const { data: createData } = await request(server, 'POST', '/capture-image', {
+      url: 'https://example.com',
+      captures: [{ deviceType: 'pc', imageData: MOCK_PNG_B64, width: 1280, height: 720 }],
+    });
+
+    const id = ((createData as { results: Array<{ id: string }> }).results)[0]!.id;
+
+    // Manually add a comment and annotation to this capture
+    const comment = {
+      id: uuidv4(),
+      capture_id: id,
+      parent_id: null,
+      author: 'test',
+      message: 'Test comment',
+      created_at: new Date().toISOString(),
+    };
+    await (storage as any).saveComment(comment);
+
+    const annotation = {
+      id: uuidv4(),
+      capture_id: id,
+      type: 'rect' as const,
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+      x2: null,
+      y2: null,
+      color: 'red',
+      label: null,
+      author: 'test',
+      created_at: new Date().toISOString(),
+    };
+    await (storage as any).saveAnnotation(annotation);
+
+    // Verify they exist
+    const beforeComments = await (storage as any).listComments(id);
+    const beforeAnnotations = await (storage as any).listAnnotations(id);
+    expect(beforeComments.length).toBe(1);
+    expect(beforeAnnotations.length).toBe(1);
+
+    // Delete the capture
+    await request(server, 'DELETE', `/captures/${id}`);
+
+    // Verify comments and annotations are gone
+    const afterComments = await (storage as any).listComments(id);
+    const afterAnnotations = await (storage as any).listAnnotations(id);
+    expect(afterComments.length).toBe(0);
+    expect(afterAnnotations.length).toBe(0);
   });
 });

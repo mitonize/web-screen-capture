@@ -6,10 +6,10 @@ import { makeListCommand } from './commands/list.js';
 import { makeShowCommand } from './commands/show.js';
 import { makeCommentCommand } from './commands/comment.js';
 import { makeAnnotationCommand } from './commands/annotation.js';
-import { makeExportCommand } from './commands/export.js';
 import { makeServeCommand } from './commands/serve.js';
 import { makeViewCommand } from './commands/view.js';
 import { makeCleanupCommand } from './commands/cleanup.js';
+import { makeDeleteCommand } from './commands/delete.js';
 
 const program = new Command();
 
@@ -23,10 +23,10 @@ program.addCommand(makeListCommand());
 program.addCommand(makeShowCommand());
 program.addCommand(makeCommentCommand());
 program.addCommand(makeAnnotationCommand());
-program.addCommand(makeExportCommand());
 program.addCommand(makeServeCommand());
 program.addCommand(makeViewCommand());
 program.addCommand(makeCleanupCommand());
+program.addCommand(makeDeleteCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   if (err instanceof ZodError) {

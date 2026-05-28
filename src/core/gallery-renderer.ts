@@ -47,6 +47,7 @@ export function renderGalleryPage(data: GalleryPageData): string {
         <p class="gallery-url" title="${capture.url}">${capture.url}</p>
         <p class="gallery-meta">${capture.device_type} • ${date}</p>
         ${capture.label ? `<p class="gallery-label">${escapeHtml(capture.label)}</p>` : ''}
+        <button class="gallery-delete-btn" onclick="deleteCapture(this, '${capture.id}')" title="Delete this capture">🗑 Delete</button>
       </div>
     </div>
       `.trim();
@@ -257,6 +258,31 @@ export function renderGalleryPage(data: GalleryPageData): string {
       margin-top: 4px;
     }
 
+    .gallery-delete-btn {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 6px 10px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      width: 100%;
+      font-weight: 500;
+    }
+
+    .gallery-delete-btn:hover {
+      background: #c82333;
+    }
+
+    .gallery-delete-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
     footer {
       text-align: center;
       padding: 12px 20px;
@@ -271,6 +297,36 @@ export function renderGalleryPage(data: GalleryPageData): string {
       } else {
         window.location.href = '/?domain=' + encodeURIComponent(domain) + '&page=1&per_page=12';
       }
+    }
+
+    function deleteCapture(btn, captureId) {
+      if (!confirm('Are you sure you want to delete this capture? This action cannot be undone.')) {
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Deleting...';
+
+      fetch(\`/captures/\${captureId}\`, { method: 'DELETE' })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error(\`HTTP \${res.status}\`);
+          }
+          return res.json();
+        })
+        .then(() => {
+          const item = btn.closest('.gallery-item');
+          item.style.opacity = '0.5';
+          item.style.pointerEvents = 'none';
+          setTimeout(() => {
+            window.location.reload();
+          }, 500);
+        })
+        .catch((err) => {
+          alert(\`Failed to delete capture: \${err.message}\`);
+          btn.disabled = false;
+          btn.textContent = '🗑 Delete';
+        });
     }
   </script>
 </head>
