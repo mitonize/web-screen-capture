@@ -118,9 +118,8 @@ export function createRequestHandler(
             outputBuffer = await resizeToThumbnail(imageBuffer);
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
-            printError(`Failed to resize thumbnail: ${msg}`);
-            sendJson(res, 500, { error: 'Failed to resize image' });
-            return;
+            printError(`Failed to resize thumbnail: ${msg} (serving original image)`);
+            outputBuffer = imageBuffer;
           }
         }
 

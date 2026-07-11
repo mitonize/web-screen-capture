@@ -356,6 +356,44 @@ describe('wsc serve HTTP handler', () => {
     expect(imageBuffer.length).toBeGreaterThan(0);
   });
 
+  it('GET /images/:id?size=thumbnail falls back to original image if resize fails', async () => {
+    // Save non-image bytes via /capture-image (valid base64 but invalid image format)
+    const invalidImageB64 = Buffer.from('not-an-image', 'utf-8').toString('base64');
+    const { data } = await request(server, 'POST', '/capture-image', {
+      url: 'https://example.com',
+      captures: [{ deviceType: 'pc', imageData: invalidImageB64, width: 1280, height: 720 }],
+    });
+
+    const id = ((data as { results: Array<{ id: string }> }).results)[0]!.id;
+
+    const addr = server.address() as { port: number };
+    const { status, imageBuffer } = await new Promise<{ status: number; imageBuffer: Buffer }>((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port: addr.port,
+          path: `/images/${id}?size=thumbnail`,
+          method: 'GET',
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            resolve({
+              status: res.statusCode ?? 0,
+              imageBuffer: Buffer.concat(chunks),
+            });
+          });
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+
+    expect(status).toBe(200);
+    expect(imageBuffer.equals(Buffer.from('not-an-image', 'utf-8'))).toBe(true);
+  });
+
   it('GET /images/:id returns 404 for non-existent image', async () => {
     const { status } = await request(server, 'GET', '/images/00000000-0000-0000-0000-000000000000');
     expect(status).toBe(404);
