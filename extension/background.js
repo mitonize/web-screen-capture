@@ -27,6 +27,8 @@ const MOBILE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) ' +
   'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
+const MOBILE_WINDOW_SIZE_HEIGHT = 852;
+
 // ── Debugger helpers ──────────────────────────────────────────────────────────
 
 function dbgAttach(target) {
@@ -144,6 +146,54 @@ async function preparePageForCapture(target, viewportHeight) {
   return initialHeight;
 }
 
+async function getCurrentViewportMetrics(target) {
+  const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
+  const viewport = metrics.visualViewport ?? metrics.layoutViewport ?? {};
+  const width = Math.max(1, Math.ceil(Number(viewport.clientWidth) || 0));
+  const height = Math.max(1, Math.ceil(Number(viewport.clientHeight) || 0));
+  return { width, height };
+}
+
+async function captureVisibleTabScreenshot(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  const windowId = tab.windowId;
+  if (typeof windowId !== 'number' || windowId < 0) {
+    throw new Error('Unable to determine the current window');
+  }
+
+  const dataUrl = await new Promise((resolve, reject) => {
+    chrome.tabs.captureVisibleTab(
+      windowId,
+      { format: 'jpeg', quality: 80 },
+      (capturedDataUrl) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(capturedDataUrl);
+      },
+    );
+  });
+
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+    throw new Error('Unexpected screenshot data');
+  }
+
+  const base64 = dataUrl.split(',', 2)[1];
+  if (!base64) {
+    throw new Error('Unexpected screenshot payload');
+  }
+
+  return Buffer.from(base64, 'base64');
+}
+
+async function scrollToTop(target) {
+  await dbgSend(target, 'Runtime.evaluate', {
+    expression: 'window.scrollTo(0, 0)',
+  });
+  await sleep(100);
+}
+
 // ── Full-page screenshot (no navigation) ─────────────────────────────────────
 
 async function captureFullPage(target, viewportHeight) {
@@ -166,16 +216,12 @@ async function captureFullPage(target, viewportHeight) {
   return { imageData: result.data, width, height };
 }
 
-// ── Mobile full-page screenshot ───────────────────────────────────────────────
-// captureBeyondViewport + setDeviceMetricsOverride can cause GPU tile repetition
-// for long pages. Instead, we temporarily set the viewport height equal to the
-// full page height so the entire content fits in one viewport, then capture
-// without captureBeyondViewport.
+// ── Mobile screenshot helpers ────────────────────────────────────────────────
 
-async function captureMobilePage(target) {
+async function captureMobileFullPage(target) {
   const { width: mobileWidth } = MOBILE_METRICS;
 
-  // Scroll to trigger lazy load and convert fixed/sticky elements
+  // Scroll to trigger lazy load and convert fixed/sticky elements.
   const clipHeight = await preparePageForCapture(target, MOBILE_METRICS.height);
 
   const metrics = await dbgSend(target, 'Page.getLayoutMetrics');
@@ -189,14 +235,34 @@ async function captureMobilePage(target) {
   });
   await sleep(200); // let layout settle after viewport resize
 
-    const result = await dbgSend(target, 'Page.captureScreenshot', {
-      format: 'jpeg',
-      quality: 80,
-      captureBeyondViewport: false,
-      clip: { x: 0, y: 0, width: mobileWidth, height: pageHeight, scale: 1 },
-    });
+  const result = await dbgSend(target, 'Page.captureScreenshot', {
+    format: 'jpeg',
+    quality: 80,
+    captureBeyondViewport: false,
+    clip: { x: 0, y: 0, width: mobileWidth, height: pageHeight, scale: 1 },
+  });
 
   return { imageData: result.data, width: mobileWidth, height: pageHeight };
+}
+
+async function captureMobileViewport(target, viewportHeight) {
+  const { width: mobileWidth } = MOBILE_METRICS;
+
+  await dbgSend(target, 'Emulation.setDeviceMetricsOverride', {
+    ...MOBILE_METRICS,
+    height: viewportHeight,
+    screenHeight: viewportHeight,
+  });
+  await sleep(200);
+
+  const result = await dbgSend(target, 'Page.captureScreenshot', {
+    format: 'jpeg',
+    quality: 80,
+    captureBeyondViewport: false,
+    clip: { x: 0, y: 0, width: mobileWidth, height: viewportHeight, scale: 1 },
+  });
+
+  return { imageData: result.data, width: mobileWidth, height: viewportHeight };
 }
 
 function normalizeDevices(devices) {
@@ -208,7 +274,7 @@ function normalizeDevices(devices) {
 
 // ── Main capture handler ──────────────────────────────────────────────────────
 
-async function handleCapture({ tabId, url, label, devices }) {
+async function handleCapture({ tabId, url, label, devices, windowSize }) {
   const target = { tabId };
   const selectedDevices = normalizeDevices(devices);
   const results = [];
@@ -219,18 +285,32 @@ async function handleCapture({ tabId, url, label, devices }) {
     attached = true;
 
     if (selectedDevices.includes('pc')) {
-      // ---- PC: scroll to trigger lazy load, then capture ----
-      const pc = await captureFullPage(target, 720);
+      // ---- PC: scroll to trigger lazy load, or clip to the visible viewport ----
+      const pcViewport = await getCurrentViewportMetrics(target);
+      const pc = windowSize
+        ? (await scrollToTop(target), {
+            imageData: (await captureVisibleTabScreenshot(tabId)).toString('base64'),
+            width: pcViewport.width,
+            height: pcViewport.height,
+          })
+        : await captureFullPage(target, pcViewport.height);
       results.push({ deviceType: 'pc', imageData: pc.imageData, width: pc.width, height: pc.height });
     }
 
     if (selectedDevices.includes('mobile')) {
-      // ---- Mobile: emulate → measure full page height → expand viewport → capture → restore ----
-      await dbgSend(target, 'Emulation.setDeviceMetricsOverride', MOBILE_METRICS);
+      const mobileViewportHeight = windowSize ? MOBILE_WINDOW_SIZE_HEIGHT : MOBILE_METRICS.height;
+      const mobileMetrics = windowSize
+        ? { ...MOBILE_METRICS, height: mobileViewportHeight, screenHeight: mobileViewportHeight }
+        : MOBILE_METRICS;
+
+      // ---- Mobile: emulate → capture full page, or clip to viewport → restore ----
+      await dbgSend(target, 'Emulation.setDeviceMetricsOverride', mobileMetrics);
       await dbgSend(target, 'Emulation.setUserAgentOverride', { userAgent: MOBILE_UA });
       await sleep(700); // wait for responsive layout to reflow
 
-      const mobile = await captureMobilePage(target);
+      const mobile = windowSize
+        ? (await scrollToTop(target), await captureMobileViewport(target, mobileViewportHeight))
+        : await captureMobileFullPage(target);
       results.push({ deviceType: 'mobile', imageData: mobile.imageData, width: mobile.width, height: mobile.height });
 
       // Restore original viewport and user-agent

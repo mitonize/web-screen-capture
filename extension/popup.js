@@ -6,6 +6,7 @@ const urlBox   = document.getElementById('url-box');
 const labelEl  = document.getElementById('label');
 const devicePcEl = document.getElementById('device-pc');
 const deviceMobileEl = document.getElementById('device-mobile');
+const windowSizeEl = document.getElementById('window-size');
 const captureBtn = document.getElementById('capture-btn');
 const statusEl = document.getElementById('status');
 const progress = document.getElementById('progress');
@@ -40,16 +41,19 @@ function getSelectedDevices() {
   return devices;
 }
 
-function formatDeviceLabel(devices) {
-  if (devices.length === 2) return 'PC・モバイル';
-  if (devices[0] === 'pc') return 'PC';
-  if (devices[0] === 'mobile') return 'モバイル';
-  return '';
+function formatDeviceLabel(devices, windowSize) {
+  const labels = [];
+  if (devices.includes('pc')) labels.push('PC');
+  if (devices.includes('mobile')) labels.push('モバイル');
+  const base = labels.join('・');
+  return windowSize ? `${base}（ウィンドウサイズ制限）` : base;
 }
 
 function updateCaptureButton() {
   const devices = getSelectedDevices();
-  captureBtn.textContent = devices.length ? `${formatDeviceLabel(devices)} キャプチャ` : '対象デバイスを選択してください';
+  captureBtn.textContent = devices.length
+    ? `${formatDeviceLabel(devices, windowSizeEl.checked)} キャプチャ`
+    : '対象デバイスを選択してください';
   captureBtn.disabled = !serverReady || devices.length === 0;
 }
 
@@ -80,6 +84,7 @@ async function saveDeviceState() {
   const state = {
     pc: devicePcEl.checked,
     mobile: deviceMobileEl.checked,
+    windowSize: windowSizeEl.checked,
   };
   return new Promise((resolve) => {
     chrome.storage.local.set({ deviceState: state }, resolve);
@@ -89,9 +94,10 @@ async function saveDeviceState() {
 async function loadDeviceState() {
   return new Promise((resolve) => {
     chrome.storage.local.get(['deviceState'], (result) => {
-      const state = result.deviceState || { pc: true, mobile: true };
-      devicePcEl.checked = state.pc;
-      deviceMobileEl.checked = state.mobile;
+      const state = result.deviceState || { pc: true, mobile: true, windowSize: false };
+      devicePcEl.checked = state.pc ?? true;
+      deviceMobileEl.checked = state.mobile ?? true;
+      windowSizeEl.checked = state.windowSize ?? false;
       resolve(state);
     });
   });
@@ -102,7 +108,7 @@ async function loadDeviceState() {
 captureBtn.addEventListener('click', async () => {
   const label = labelEl.value.trim() || undefined;
   const devices = getSelectedDevices();
-  const deviceLabel = formatDeviceLabel(devices);
+  const deviceLabel = formatDeviceLabel(devices, windowSizeEl.checked);
 
   if (!devices.length) {
     setStatus('対象デバイスを1つ以上選択してください', 'error');
@@ -114,7 +120,14 @@ captureBtn.addEventListener('click', async () => {
   setProgress(10);
 
   chrome.runtime.sendMessage(
-    { type: 'CAPTURE', tabId: currentTabId, url: currentTabUrl, label, devices },
+    {
+      type: 'CAPTURE',
+      tabId: currentTabId,
+      url: currentTabUrl,
+      label,
+      devices,
+      windowSize: windowSizeEl.checked,
+    },
     (response) => {
       setProgress(null);
 
@@ -176,6 +189,10 @@ async function init() {
     saveDeviceState();
   });
   deviceMobileEl.addEventListener('change', () => {
+    updateCaptureButton();
+    saveDeviceState();
+  });
+  windowSizeEl.addEventListener('change', () => {
     updateCaptureButton();
     saveDeviceState();
   });

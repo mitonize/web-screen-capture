@@ -75,6 +75,12 @@
       margin-bottom: 10px;
     }
 
+    .capture-mode {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
     .device-option {
       display: inline-flex;
       align-items: center;
@@ -167,6 +173,10 @@
     <div class="device-options" aria-label="対象デバイス">
       <label class="device-option"><input type="checkbox" id="device-pc" checked> PC</label>
       <label class="device-option"><input type="checkbox" id="device-mobile" checked> モバイル</label>
+    </div>
+
+    <div class="capture-mode" aria-label="キャプチャモード">
+      <label class="device-option"><input type="checkbox" id="window-size"> ウィンドウサイズ制限</label>
     </div>
 
     <button id="capture-btn" disabled>選択デバイスをキャプチャ</button>

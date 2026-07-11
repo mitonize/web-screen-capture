@@ -2,8 +2,7 @@ import sharp from 'sharp';
 
 /**
  * Resize image to thumbnail (300x300px)
- * - Scale based on width (set width to 300px, maintain aspect ratio)
- * - Crop from top to 300px height
+ * - Create a square thumbnail with top-biased crop
  */
 export async function resizeToThumbnail(imageBuffer: Buffer): Promise<Buffer> {
   const THUMB_SIZE = 300;
@@ -14,21 +13,12 @@ export async function resizeToThumbnail(imageBuffer: Buffer): Promise<Buffer> {
     throw new Error('Failed to read image metadata');
   }
 
-  // Calculate height after scaling width to THUMB_SIZE
-  const scaledHeight = Math.round((metadata.height * THUMB_SIZE) / metadata.width);
-
-  // Resize to target width (maintaining aspect ratio)
-  // Then extract (crop) top 300px
+  // Always output exactly THUMB_SIZE x THUMB_SIZE and crop from top when needed.
+  // Using fit=cover avoids out-of-bounds extract errors for wide images.
   return sharp(imageBuffer)
-    .resize(THUMB_SIZE, scaledHeight, {
-      fit: 'fill',
-      position: 'top',
-    })
-    .extract({
-      left: 0,
-      top: 0,
-      width: THUMB_SIZE,
-      height: THUMB_SIZE,
+    .resize(THUMB_SIZE, THUMB_SIZE, {
+      fit: 'cover',
+      position: 'north',
     })
     .toBuffer();
 }

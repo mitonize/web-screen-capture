@@ -501,9 +501,10 @@ The Chrome/Edge browser extension (`extension/`) enables **instant capture of li
 The extension uses Chrome DevTools Protocol (`chrome.debugger` API) to directly manipulate the current tab:
 
 1. **PC Capture**: Screenshot of current viewport + full page scroll
-2. **Mobile Emulation**: Apply iPhone 13 preset (390×844) → capture → restore original state
-3. **No Navigation**: The page content remains intact (preserves POST states, form data, etc.)
-4. **Server Upload**: Send base64 JPEG to `wsc serve` at `http://127.0.0.1:4242/capture-image`
+2. **Window-Size Limit**: Optionally restrict captures to the currently visible tab area (PC uses the visible tab as-is; mobile uses the emulated viewport)
+3. **Mobile Emulation**: Apply iPhone 13 preset (390×844) → capture → restore original state
+4. **No Navigation**: The page content remains intact (preserves POST states, form data, etc.)
+5. **Server Upload**: Send base64 JPEG to `wsc serve` at `http://127.0.0.1:4242/capture-image`
 
 ### Installation
 
@@ -526,8 +527,9 @@ The extension uses Chrome DevTools Protocol (`chrome.debugger` API) to directly 
 3. Click the 📸 wsc icon in the toolbar
 4. (Optional) Enter a label
 5. Select devices: ☐ PC, ☐ Mobile (or both)
-6. Click "Capture"
-7. View results: `wsc list` or open `http://localhost:4242`
+6. Optionally enable "Window size limit" (visible area only)
+7. Click "Capture"
+8. View results: `wsc list` or open `http://localhost:4242`
 
 ### Key Differences: CLI vs Extension
 
